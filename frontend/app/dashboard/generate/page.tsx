@@ -3,6 +3,7 @@
 import { Suspense, useState, useEffect } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
+import Footer from "@/app/components/Footer";
 
 type Status = "idle" | "loading" | "success" | "error";
 
@@ -228,13 +229,7 @@ function GenerateContent() {
 
   return (
     <div style={{ maxWidth: "600px", margin: "0 auto", position: "relative", zIndex: 1 }}>
-      {/* Central Card */}
-      <div className="animate-fade-up" style={{
-        background: "#18181f", border: "1px solid #2a2a38",
-        borderRadius: "20px", padding: "32px",
-        boxShadow: "0 8px 40px rgba(0,0,0,0.25)",
-        marginTop: "40px"
-      }}>
+      <div className="animate-fade-up" style={{ marginTop: "40px" }}>
         {/* Loading state */}
         {status === "loading" && (
           <div style={{ textAlign: "center" }}>
@@ -315,23 +310,20 @@ function GenerateContent() {
               )}
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "20px", marginBottom: "16px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "28px", marginBottom: "16px" }}>
               {results.map((clipResult, idx) => (
-                <div key={clipResult.filename} style={{
-                  borderRadius: "12px", border: "1px solid #2a2a38",
-                  background: "#111116", padding: "12px",
-                }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 4px 10px", gap: "12px", flexWrap: "wrap" }}>
-                    <p style={{ fontSize: "12px", fontWeight: 600, color: "#c084fc", margin: 0 }}>
+                <div key={clipResult.filename} style={{ marginBottom: "4px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 0 10px", gap: "12px", flexWrap: "wrap" }}>
+                    <p style={{ fontSize: "13px", fontWeight: 600, color: "#c084fc", margin: 0 }}>
                       {results.length > 1 ? `Klip ${idx + 1}` : "Hasil Klip"}
                     </p>
                     <p style={{ fontSize: "11px", color: "#9ca3af", margin: 0, fontFamily: "monospace" }}>
                       Start {clipJobs[idx]?.startTime ?? secondsToTime(clipJobs[idx]?.start ?? 0)} · {clipJobs[idx]?.duration ?? 0} detik
                     </p>
                   </div>
-                  <div style={{ borderRadius: "10px", overflow: "hidden", border: "1px solid #2a2a38", background: "#000", marginBottom: "10px" }}>
+                  <div style={{ borderRadius: "12px", overflow: "hidden", background: "#000", marginBottom: "12px" }}>
                     <video controls preload="metadata" playsInline src={clipResult.clip_url}
-                      style={{ width: "100%", maxHeight: "260px", objectFit: "contain", display: "block" }} />
+                      style={{ width: "100%", maxHeight: "300px", objectFit: "contain", display: "block" }} />
                   </div>
                   <button
                     onClick={() => downloadClip(clipResult)}
@@ -385,8 +377,6 @@ function GenerateContent() {
               Gagal Membuat Klip
             </h2>
             <div style={{
-              padding: "14px 16px", borderRadius: "12px",
-              background: "rgba(239,68,68,0.05)", border: "1px solid rgba(239,68,68,0.15)",
               color: "#fca5a5", fontSize: "13px", textAlign: "left", marginBottom: "24px",
               wordBreak: "break-word"
             }}>
@@ -428,7 +418,7 @@ export default function GeneratePage() {
   }
 
   return (
-    <>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#0f0f13" }}>
       {/* ── Topbar ── */}
       <header style={{
         position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
@@ -490,9 +480,10 @@ export default function GeneratePage() {
 
       {/* ── Page Body ── */}
       <div style={{
-        minHeight: "100vh", background: "#0f0f13",
+        flex: 1,
         paddingTop: "92px", paddingBottom: "48px",
         paddingLeft: "32px", paddingRight: "32px",
+        position: "relative",
       }}>
         {/* Bg orbs */}
         <div aria-hidden style={{
@@ -510,6 +501,7 @@ export default function GeneratePage() {
           <GenerateContent />
         </Suspense>
       </div>
-    </>
+      <Footer />
+    </div>
   );
 }

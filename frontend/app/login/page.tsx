@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Footer from "@/app/components/Footer";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -34,8 +35,7 @@ export default function LoginPage() {
     <div style={{
       minHeight: "100vh", background: "#0f0f13",
       display: "flex", flexDirection: "column",
-      alignItems: "center", justifyContent: "center",
-      padding: "24px", position: "relative", overflow: "hidden",
+      position: "relative", overflow: "hidden",
     }}>
       {/* Background orbs */}
       <div aria-hidden style={{
@@ -62,8 +62,17 @@ export default function LoginPage() {
         ← Kembali
       </button>
 
-      {/* Login Card */}
-      <div className="animate-fade-up" style={{
+      {/* Main Content Area */}
+      <div style={{
+        flex: 1,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "24px",
+        zIndex: 1,
+      }}>
+        {/* Login Card */}
+        <div className="animate-fade-up" style={{
         width: "100%", maxWidth: "420px", zIndex: 1,
         background: "#18181f", border: "1px solid #2a2a38",
         borderRadius: "24px", padding: "40px 36px",
@@ -185,7 +194,9 @@ export default function LoginPage() {
           Aplikasi ini berjalan sepenuhnya secara lokal.<br />
           Gunakan username dan password apa pun untuk masuk.
         </p>
+        </div>
       </div>
+      <Footer />
     </div>
   );
 }

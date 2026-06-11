@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+import Footer from "@/app/components/Footer";
 const NAV_LINKS = [
   { label: "Fitur", href: "#" },
   { label: "Tentang", href: "/tentang" },
@@ -504,18 +505,7 @@ export default function HomePage() {
         >Mulai Gratis →</button>
       </section>
 
-      {/* Footer */}
-      <footer style={{
-        borderTop: "1px solid rgba(255,255,255,0.06)",
-        padding: "24px 40px",
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        background: "#000",
-      }}>
-        <Image src="/logo.png" alt="Productive Clip" width={120} height={40} style={{ objectFit: "contain", opacity: 0.6 }} />
-        <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.25)" }}>
-          © 2026 ProductiveClip · Created by PT.Link Productive
-        </span>
-      </footer>
+      <Footer />
     </div>
   );
 }

@@ -60,6 +60,13 @@ pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
 
+
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+
+uvicorn main:app --reload --port 8000
+```
+
 The API will be available at **http://localhost:8000**  
 Swagger docs: **http://localhost:8000/docs**
 

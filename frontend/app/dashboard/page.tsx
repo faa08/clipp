@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import Footer from "@/app/components/Footer";
 
 /* ── Time helpers ── */
 function timeToSeconds(t: string): number {
@@ -19,6 +20,12 @@ function secondsToTime(total: number): string {
   const m = Math.floor((total % 3600) / 60);
   const s = Math.floor(total % 60);
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function getYouTubeId(url: string): string | null {
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[2].length === 11) ? match[2] : null;
 }
 
 interface ClipEntry {
@@ -43,8 +50,6 @@ function recalculateStarts(clips: ClipEntry[], fromIndex = 1): ClipEntry[] {
 
 const MAX_CLIPS = 5;
 
-let nextId = 1;
-
 /* ══════════════════════════════════════════
    DASHBOARD PAGE
 ═══════════════════════════════════════════ */
@@ -54,7 +59,7 @@ export default function DashboardPage() {
 
   const [url, setUrl] = useState("");
   const [clips, setClips] = useState<ClipEntry[]>([
-    { id: nextId++, startTime: "00:00:00", duration: 30, selected: true },
+    { id: 1, startTime: "00:00:00", duration: 30, selected: true },
   ]);
   const [videoDuration, setVideoDuration] = useState<number | null>(null);
   const [videoDurationLoading, setVideoDurationLoading] = useState(false);
@@ -159,12 +164,14 @@ export default function DashboardPage() {
 
     const remaining = videoDuration !== null ? videoDuration - nextStartSecs : 30;
     const nextDuration = videoDuration !== null
-      ? Math.min(30, Math.max(5, remaining))
+      ? Math.min(90, Math.max(10, remaining))
       : 30;
+
+    const nextId = clips.length > 0 ? Math.max(...clips.map((c) => c.id)) + 1 : 1;
 
     applyClips([
       ...clips,
-      { id: nextId++, startTime: secondsToTime(nextStartSecs), duration: nextDuration, selected: true },
+      { id: nextId, startTime: secondsToTime(nextStartSecs), duration: nextDuration, selected: true },
     ]);
   }
 
@@ -215,7 +222,7 @@ export default function DashboardPage() {
   const hasClipBeyondVideo = videoDuration !== null && selectedClips.some((c) => getClipEnd(c) > videoDuration);
   const allValid = isValidUrl
     && selectedClips.length > 0
-    && selectedClips.every((c) => isValidTime(c.startTime))
+    && selectedClips.every((c) => isValidTime(c.startTime) && c.duration >= 10 && c.duration <= 90)
     && !hasClipBeyondVideo;
 
   function handleGenerateAll() {
@@ -232,7 +239,7 @@ export default function DashboardPage() {
     sessionStorage.setItem("autoclip_batch", JSON.stringify(batch));
     router.push("/dashboard/generate");
     setUrl("");
-    setClips([{ id: nextId++, startTime: "00:00:00", duration: 30, selected: true }]);
+    setClips([{ id: 1, startTime: "00:00:00", duration: 30, selected: true }]);
   }
 
   function handleLogout() {
@@ -241,7 +248,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#0f0f13" }}>
       {/* ── Topbar ── */}
       <header style={{
         position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
@@ -300,9 +307,10 @@ export default function DashboardPage() {
 
       {/* ── Page Body ── */}
       <div style={{
-        minHeight: "100vh", background: "#0f0f13",
+        flex: 1,
         paddingTop: "92px", paddingBottom: "48px",
         paddingLeft: "32px", paddingRight: "32px",
+        position: "relative",
       }}>
         {/* Bg orbs */}
         <div aria-hidden style={{
@@ -327,13 +335,10 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          {/* Centralized Form Box */}
+          {/* Centralized Form */}
           <div style={{ display: "flex", justifyContent: "center", marginTop: "24px" }}>
             <div className="animate-fade-up" style={{
               width: "100%", maxWidth: "640px",
-              background: "#18181f", border: "1px solid #2a2a38",
-              borderRadius: "20px", padding: "32px",
-              boxShadow: "0 8px 40px rgba(0,0,0,0.25)",
             }}>
               <div style={{ marginBottom: "24px" }}>
                 <h2 style={{ fontSize: "17px", fontWeight: 700, color: "#f0f0f5", margin: 0 }}>
@@ -370,7 +375,47 @@ export default function DashboardPage() {
                 />
               </div>
 
-              {isValidUrl && (
+              {/* YouTube Preview Card */}
+              {(() => {
+                const videoId = getYouTubeId(url);
+                if (!videoId) return null;
+                return (
+                  <div style={{
+                    background: "#0f0f13",
+                    border: "1px solid #2a2a38",
+                    borderRadius: "12px",
+                    padding: "12px",
+                    marginBottom: "20px"
+                  }}>
+                    <div style={{ position: "relative", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "8px", border: "1px solid rgba(42,42,56,0.6)" }}>
+                      <iframe
+                        style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%" }}
+                        src={`https://www.youtube.com/embed/${videoId}`}
+                        title="YouTube video player"
+                        frameBorder="0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        allowFullScreen
+                      ></iframe>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "10px" }}>
+                      <span style={{ fontSize: "12px", color: "#9ca3af" }}>Preview Video</span>
+                      <span style={{
+                        fontSize: "12px", fontWeight: 600, color: "#c084fc",
+                        background: "rgba(168,85,247,0.1)", padding: "3px 8px", borderRadius: "6px",
+                        border: "1px solid rgba(168,85,247,0.2)"
+                      }}>
+                        {videoDurationLoading
+                          ? "Mengambil durasi..."
+                          : videoDuration !== null
+                            ? `Total Durasi: ${secondsToTime(videoDuration)}`
+                            : "Durasi tidak diketahui"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {isValidUrl && !getYouTubeId(url) && (
                 <p style={{ fontSize: "12px", color: "#6b7280", margin: "-12px 0 20px" }}>
                   {videoDurationLoading
                     ? "Mengambil durasi video..."
@@ -417,127 +462,168 @@ export default function DashboardPage() {
 
               {/* Clip Entries */}
               <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "24px" }}>
-                {clips.map((clip, idx) => (
-                  <div key={clip.id} style={{
-                    display: "grid",
-                    gridTemplateColumns: clips.length > 1 ? "auto auto 1fr 1fr auto" : "auto auto 1fr 1fr",
-                    gap: "10px",
-                    alignItems: "center",
-                    padding: "12px",
-                    borderRadius: "12px",
-                    background: clip.selected ? "#0f0f13" : "rgba(15,15,19,0.4)",
-                    border: clip.selected ? "1px solid #2a2a38" : "1px solid rgba(42,42,56,0.4)",
-                    opacity: clip.selected ? 1 : 0.65,
-                    transition: "all 0.2s ease",
-                  }}>
-                    {/* Custom Checkbox */}
-                    <div 
-                      style={{ display: "flex", alignItems: "center", cursor: "pointer", paddingRight: "2px" }} 
-                      onClick={() => updateClip(clip.id, "selected", !clip.selected)}
-                    >
+                {clips.map((clip, idx) => {
+                  const isDurationInvalid = clip.selected && (clip.duration < 10 || clip.duration > 90);
+                  return (
+                    <div key={clip.id} style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "8px",
+                      padding: "12px",
+                      borderRadius: "12px",
+                      background: clip.selected ? "#0f0f13" : "rgba(15,15,19,0.4)",
+                      border: clip.selected
+                        ? (isDurationInvalid ? "1px solid rgba(239, 68, 68, 0.5)" : "1px solid #2a2a38")
+                        : "1px solid rgba(42,42,56,0.4)",
+                      opacity: clip.selected ? 1 : 0.65,
+                      transition: "all 0.2s ease",
+                    }}>
                       <div style={{
-                        width: "18px",
-                        height: "18px",
-                        borderRadius: "4px",
-                        border: clip.selected ? "2px solid #a855f7" : "2px solid #4b5563",
-                        background: clip.selected ? "#a855f7" : "transparent",
-                        display: "flex",
+                        display: "grid",
+                        gridTemplateColumns: clips.length > 1 ? "auto auto 1fr 1fr auto" : "auto auto 1fr 1fr",
+                        gap: "10px",
                         alignItems: "center",
-                        justifyContent: "center",
-                        transition: "all 0.2s ease",
                       }}>
-                        {clip.selected && (
-                          <svg width="10" height="8" viewBox="0 0 10 8" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="1.5 4 4 6.5 8.5 1.5" />
-                          </svg>
+                        {/* Custom Checkbox */}
+                        <div 
+                          style={{ display: "flex", alignItems: "center", cursor: "pointer", paddingRight: "2px" }} 
+                          onClick={() => updateClip(clip.id, "selected", !clip.selected)}
+                        >
+                          <div style={{
+                            width: "18px",
+                            height: "18px",
+                            borderRadius: "4px",
+                            border: clip.selected ? "2px solid #a855f7" : "2px solid #4b5563",
+                            background: clip.selected ? "#a855f7" : "transparent",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            transition: "all 0.2s ease",
+                          }}>
+                            {clip.selected && (
+                              <svg width="10" height="8" viewBox="0 0 10 8" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="1.5 4 4 6.5 8.5 1.5" />
+                              </svg>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Clip Number Badge */}
+                        <div style={{
+                          width: "28px", height: "28px", borderRadius: "8px",
+                          background: clip.selected ? "rgba(168,85,247,0.15)" : "rgba(75,85,99,0.1)",
+                          border: clip.selected ? "1px solid rgba(168,85,247,0.25)" : "1px solid rgba(75,85,99,0.2)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: "12px", fontWeight: 700, color: clip.selected ? "#c084fc" : "#6b7280",
+                          flexShrink: 0,
+                        }}>
+                          {idx + 1}
+                        </div>
+
+                        {/* Start Time */}
+                        <div>
+                          <label style={{ display: "block", fontSize: "10px", color: clip.selected ? "#6b7280" : "#4b5563", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                            Start
+                          </label>
+                          <input
+                            type="text" placeholder="00:00:00"
+                            value={clip.startTime}
+                            disabled={!clip.selected}
+                            onChange={(e) => updateClip(clip.id, "startTime", e.target.value.replace(/[^0-9:]/g, ""))}
+                            onBlur={() => formatTimeOnBlur(clip.id, clip.startTime)}
+                            style={{
+                              width: "100%", padding: "7px 10px", borderRadius: "8px",
+                              background: clip.selected ? "#18181f" : "rgba(24,24,31,0.5)",
+                              border: `1px solid ${!clip.selected ? "rgba(42,42,56,0.3)" : isValidTime(clip.startTime) ? "#2a2a38" : "#ef444460"}`,
+                              color: clip.selected ? "#f0f0f5" : "#6b7280", fontSize: "13px", fontFamily: "monospace",
+                              outline: "none", boxSizing: "border-box",
+                              cursor: !clip.selected ? "not-allowed" : "text",
+                            }}
+                          />
+                        </div>
+
+                        {/* Duration */}
+                        <div>
+                          <label style={{ display: "block", fontSize: "10px", color: clip.selected ? "#6b7280" : "#4b5563", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                            Durasi (detik, 10-90)
+                          </label>
+                          <input
+                            type="number" min={10} max={90}
+                            value={clip.duration}
+                            disabled={!clip.selected}
+                            onChange={(e) => updateClip(clip.id, "duration", Number(e.target.value))}
+                            onBlur={(e) => {
+                              const val = Math.max(10, Math.min(90, Number(e.target.value) || 10));
+                              updateClip(clip.id, "duration", val);
+                            }}
+                            style={{
+                              width: "100%", padding: "7px 10px", borderRadius: "8px",
+                              background: clip.selected ? "#18181f" : "rgba(24,24,31,0.5)",
+                              border: clip.selected
+                                ? (isDurationInvalid ? "1px solid rgba(239, 68, 68, 0.6)" : "1px solid #2a2a38")
+                                : "1px solid rgba(42,42,56,0.3)",
+                              color: clip.selected ? "#f0f0f5" : "#6b7280", fontSize: "13px",
+                              outline: "none", boxSizing: "border-box",
+                              cursor: !clip.selected ? "not-allowed" : "default",
+                            }}
+                          />
+                        </div>
+
+                        {/* Remove Button */}
+                        {clips.length > 1 && (
+                          <button
+                            onClick={() => removeClip(clip.id)}
+                            title="Hapus klip"
+                            style={{
+                              width: "28px", height: "28px", borderRadius: "8px",
+                              background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              cursor: "pointer", transition: "all 0.2s",
+                              color: "#f87171", fontSize: "14px",
+                              alignSelf: "end", marginBottom: "2px",
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = "rgba(239,68,68,0.15)";
+                              e.currentTarget.style.borderColor = "rgba(239,68,68,0.4)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = "rgba(239,68,68,0.08)";
+                              e.currentTarget.style.borderColor = "rgba(239,68,68,0.2)";
+                            }}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                          </button>
                         )}
                       </div>
-                    </div>
 
-                    {/* Clip Number Badge */}
-                    <div style={{
-                      width: "28px", height: "28px", borderRadius: "8px",
-                      background: clip.selected ? "rgba(168,85,247,0.15)" : "rgba(75,85,99,0.1)",
-                      border: clip.selected ? "1px solid rgba(168,85,247,0.25)" : "1px solid rgba(75,85,99,0.2)",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: "12px", fontWeight: 700, color: clip.selected ? "#c084fc" : "#6b7280",
-                      flexShrink: 0,
-                    }}>
-                      {idx + 1}
+                      {/* Warning message if duration is invalid */}
+                      {isDurationInvalid && (
+                        <div style={{
+                          fontSize: "11px",
+                          color: "#f87171",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          marginTop: "2px",
+                          paddingLeft: "42px",
+                        }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="12" y1="8" x2="12" y2="12" />
+                            <line x1="12" y1="16" x2="12.01" y2="16" />
+                          </svg>
+                          <span>
+                            {clip.duration < 10
+                              ? "Peringatan: Durasi kurang dari batas minimal (10 detik)!"
+                              : "Peringatan: Durasi melebihi batas maksimal (90 detik)!"}
+                          </span>
+                        </div>
+                      )}
                     </div>
-
-                    {/* Start Time */}
-                    <div>
-                      <label style={{ display: "block", fontSize: "10px", color: clip.selected ? "#6b7280" : "#4b5563", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                        Start
-                      </label>
-                      <input
-                        type="text" placeholder="00:00:00"
-                        value={clip.startTime}
-                        disabled={!clip.selected}
-                        onChange={(e) => updateClip(clip.id, "startTime", e.target.value.replace(/[^0-9:]/g, ""))}
-                        onBlur={() => formatTimeOnBlur(clip.id, clip.startTime)}
-                        style={{
-                          width: "100%", padding: "7px 10px", borderRadius: "8px",
-                          background: clip.selected ? "#18181f" : "rgba(24,24,31,0.5)",
-                          border: `1px solid ${!clip.selected ? "rgba(42,42,56,0.3)" : isValidTime(clip.startTime) ? "#2a2a38" : "#ef444460"}`,
-                          color: clip.selected ? "#f0f0f5" : "#6b7280", fontSize: "13px", fontFamily: "monospace",
-                          outline: "none", boxSizing: "border-box",
-                          cursor: !clip.selected ? "not-allowed" : "text",
-                        }}
-                      />
-                    </div>
-
-                    {/* Duration */}
-                    <div>
-                      <label style={{ display: "block", fontSize: "10px", color: clip.selected ? "#6b7280" : "#4b5563", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                        Durasi (detik)
-                      </label>
-                      <input
-                        type="number" min={5} max={300}
-                        value={clip.duration}
-                        disabled={!clip.selected}
-                        onChange={(e) => updateClip(clip.id, "duration", Math.max(5, Number(e.target.value)))}
-                        style={{
-                          width: "100%", padding: "7px 10px", borderRadius: "8px",
-                          background: clip.selected ? "#18181f" : "rgba(24,24,31,0.5)",
-                          border: clip.selected ? "1px solid #2a2a38" : "1px solid rgba(42,42,56,0.3)",
-                          color: clip.selected ? "#f0f0f5" : "#6b7280", fontSize: "13px",
-                          outline: "none", boxSizing: "border-box",
-                          cursor: !clip.selected ? "not-allowed" : "default",
-                        }}
-                      />
-                    </div>
-
-                    {/* Remove Button */}
-                    {clips.length > 1 && (
-                      <button
-                        onClick={() => removeClip(clip.id)}
-                        title="Hapus klip"
-                        style={{
-                          width: "28px", height: "28px", borderRadius: "8px",
-                          background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          cursor: "pointer", transition: "all 0.2s",
-                          color: "#f87171", fontSize: "14px",
-                          alignSelf: "end", marginBottom: "2px",
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = "rgba(239,68,68,0.15)";
-                          e.currentTarget.style.borderColor = "rgba(239,68,68,0.4)";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = "rgba(239,68,68,0.08)";
-                          e.currentTarget.style.borderColor = "rgba(239,68,68,0.2)";
-                        }}
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {(clipLimitWarning || videoLimitWarning || hasClipBeyondVideo) && (
@@ -580,12 +666,9 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Footer */}
-          <footer style={{ textAlign: "center", marginTop: "48px", color: "#374151", fontSize: "12px" }}>
-            ProductiveClip · Powered by LinkProductive &amp; MoviePy
-          </footer>
         </div>
       </div>
-    </>
+      <Footer />
+    </div>
   );
 }
