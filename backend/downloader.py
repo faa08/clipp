@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import subprocess
@@ -44,6 +45,39 @@ def _find_ffmpeg_bin() -> str | None:
     ]:
         if os.path.exists(os.path.join(path, "ffmpeg.exe")):
             return path
+
+    return None
+
+
+def get_video_duration(url: str) -> int | None:
+    """Return total video duration in seconds using yt-dlp metadata only."""
+    ytdlp = _get_ytdlp_cmd()
+    command = [
+        ytdlp,
+        "-j",
+        "--no-playlist",
+        "--no-warnings",
+        "--extractor-args", "youtube:player_client=android,web",
+        url,
+    ]
+
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if result.returncode != 0:
+            print("[downloader] get_video_duration failed:", result.stderr[-1000:] if result.stderr else "")
+            return None
+
+        data = json.loads(result.stdout)
+        duration = data.get("duration")
+        if isinstance(duration, (int, float)) and duration > 0:
+            return int(duration)
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError) as e:
+        print(f"[downloader] get_video_duration error: {e}")
 
     return None
 

@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from downloader import download_video
+from downloader import download_video, get_video_duration
 from clipper import extract_clip
 
 app = FastAPI(title="Auto Clip API")
@@ -41,9 +41,26 @@ class ClipResponse(BaseModel):
     message: str
 
 
+class VideoInfoResponse(BaseModel):
+    duration: int
+    message: str
+
+
 @app.get("/")
 def root():
     return {"status": "Auto Clip API is running"}
+
+
+@app.get("/video-info", response_model=VideoInfoResponse)
+def video_info(url: str):
+    duration = get_video_duration(url)
+    if not duration:
+        raise HTTPException(status_code=400, detail="Failed to fetch video duration")
+
+    return VideoInfoResponse(
+        duration=duration,
+        message="Video info fetched successfully",
+    )
 
 
 @app.post("/generate-clip", response_model=ClipResponse)
