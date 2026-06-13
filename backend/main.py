@@ -4,9 +4,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 from downloader import download_video, get_video_duration
 from clipper import extract_clip
+from subtitler import burn_subtitles, transcribe_audio
+from captioner import generate_all_captions
+from highlighter import get_highlights
 
 app = FastAPI(title="Auto Clip API")
 
@@ -31,14 +36,41 @@ app.mount("/clips", StaticFiles(directory=OUTPUT_DIR), name="clips")
 
 class ClipRequest(BaseModel):
     url: str
-    start_time: int = 0   # seconds into the video to start the clip
-    duration: int = 30    # length of the clip in seconds
+    start_time: int = 0
+    duration: int = 30
+    add_subtitle: bool = False
+    subtitle_style: str = "mozi"  # "beasty" | "youshaei" | "mozi"
 
 
 class ClipResponse(BaseModel):
     clip_url: str
     filename: str
     message: str
+    transcript: str = ""   # whisper transcript, available when add_subtitle=True
+
+
+class HighlightClip(BaseModel):
+    start_time: int
+    start_label: str
+    duration: int
+    title: str
+    reason: str
+
+
+class HighlightResponse(BaseModel):
+    clips: list[HighlightClip]
+    error: str | None = None
+    transcript_source: str = "youtube"  # "youtube" or "whisper"
+
+
+class CaptionResponse(BaseModel):
+    instagram: str
+    tiktok: str
+    youtube: str
+
+
+class CaptionRequest(BaseModel):
+    transcript: str
 
 
 class VideoInfoResponse(BaseModel):
@@ -80,10 +112,48 @@ def generate_clip(req: ClipRequest):
     if not success or not os.path.exists(output_path):
         raise HTTPException(status_code=500, detail="Failed to extract clip")
 
+    # 3. Optionally burn subtitles + capture transcript
+    transcript = ""
+    if req.add_subtitle:
+        subtitled_filename = f"clip_{job_id}_sub.mp4"
+        subtitled_path = os.path.join(OUTPUT_DIR, subtitled_filename)
+        sub_success, transcript = burn_subtitles(output_path, subtitled_path, req.subtitle_style)
+        if sub_success and os.path.exists(subtitled_path):
+            os.remove(output_path)
+            os.rename(subtitled_path, output_path)
+        else:
+            print(f"[main] Subtitle burn failed for {job_id}, returning clip without subtitles.")
+
     clip_url = f"http://localhost:8000/clips/{output_filename}"
 
     return ClipResponse(
         clip_url=clip_url,
         filename=output_filename,
         message="Clip generated successfully",
+        transcript=transcript,
+    )
+
+
+@app.post("/generate-caption", response_model=CaptionResponse)
+def generate_caption_endpoint(req: CaptionRequest):
+    if not req.transcript or not req.transcript.strip():
+        raise HTTPException(status_code=400, detail="Transkrip tidak boleh kosong")
+    try:
+        captions = generate_all_captions(req.transcript)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return CaptionResponse(**captions)
+
+
+@app.get("/auto-highlight", response_model=HighlightResponse)
+def auto_highlight(url: str, max_clips: int = 5):
+    """
+    Fetch YouTube transcript (or fallback to Whisper) and use Groq AI
+    to identify the most engaging highlight moments.
+    """
+    result = get_highlights(url, max_clips=min(max_clips, 5))
+    return HighlightResponse(
+        clips=result["clips"],
+        error=result.get("error"),
+        transcript_source=result.get("transcript_source", "youtube"),
     )

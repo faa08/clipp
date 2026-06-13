@@ -1,0 +1,14 @@
+# Environment variables
+backend/.env
+
+# Python
+backend/venv/
+backend/__pycache__/
+backend/storage/videos/
+backend/storage/output/
+backend/storage/audio/
+backend/storage/clips/
+
+# Node
+frontend/node_modules/
+frontend/.next/
