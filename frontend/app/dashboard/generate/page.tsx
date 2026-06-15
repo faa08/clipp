@@ -51,6 +51,7 @@ interface BatchJob {
   addSubtitle?: boolean;
   autoMode?: boolean;
   subtitleStyle?: string;
+  layout?: string;
 }
 
 type Platform = "instagram" | "tiktok" | "youtube";
@@ -93,7 +94,7 @@ function GenerateContent() {
       } catch { return null; }
     }
 
-    async function generateOne(videoUrl: string, clip: ClipJob, addSubtitle: boolean, subtitleStyle: string): Promise<ClipResult> {
+    async function generateOne(videoUrl: string, clip: ClipJob, addSubtitle: boolean, subtitleStyle: string, layout: string): Promise<ClipResult> {
       if (!active) throw new Error("Dibatalkan");
       setCurrentStep(1);
       setLoadingText("Mengunduh bagian video dari YouTube (yt-dlp)...");
@@ -105,7 +106,7 @@ function GenerateContent() {
       const res = await fetch("http://localhost:8000/generate-clip", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: videoUrl, start_time: clip.start, duration: clip.duration, add_subtitle: addSubtitle, subtitle_style: subtitleStyle }),
+        body: JSON.stringify({ url: videoUrl, start_time: clip.start, duration: clip.duration, add_subtitle: addSubtitle, subtitle_style: subtitleStyle, layout }),
       });
 
       if (addSubtitle && active) {
@@ -135,6 +136,7 @@ function GenerateContent() {
       setWithSubtitle(addSubtitle);
       setIsAutoMode(batch?.autoMode ?? false);
       const subtitleStyle = batch?.subtitleStyle ?? "mozi";
+      const layout = batch?.layout ?? "blur";
       const completed: ClipResult[] = [];
       const errors: string[] = [];
 
@@ -145,7 +147,7 @@ function GenerateContent() {
           setCurrentStep(1);
           setLoadingText(jobs.length > 1 ? `Memproses klip ${i + 1} dari ${jobs.length}...` : "Mengunduh bagian video dari YouTube (yt-dlp)...");
           try {
-            const data = await generateOne(jobs[i].videoUrl, jobs[i].clip, addSubtitle, subtitleStyle);
+            const data = await generateOne(jobs[i].videoUrl, jobs[i].clip, addSubtitle, subtitleStyle, layout);
             if (!active) return;
             setCurrentStep(addSubtitle ? 4 : 3);
             setLoadingText(jobs.length > 1 ? `Klip ${i + 1} selesai!` : "Klip selesai dibuat!");
@@ -238,6 +240,24 @@ function GenerateContent() {
     } catch (e: unknown) { console.error(e); }
     finally { setDownloadingId(null); }
   }
+  const [progressPct, setProgressPct] = useState(0);
+
+  // Simulate progress percentage that slowly advances during loading
+  useEffect(() => {
+    if (status !== "loading") { setProgressPct(0); return; }
+    setProgressPct(0);
+    const targets = [8, 20, 35, 55, 72, 85, 92, 97];
+    let idx = 0;
+    const advance = () => {
+      if (idx >= targets.length) return;
+      setProgressPct(targets[idx]);
+      idx++;
+    };
+    advance();
+    const intervals = [1200, 2500, 4000, 8000, 15000, 25000, 40000];
+    const timers = intervals.map((ms, i) => setTimeout(() => { if (i + 1 < targets.length) setProgressPct(targets[i + 1]); }, ms));
+    return () => timers.forEach(clearTimeout);
+  }, [status]);
 
   function handleBack() { router.push("/dashboard"); }
 
@@ -254,43 +274,126 @@ function GenerateContent() {
 
       {/* ── LOADING ── */}
       {status === "loading" && (
-        <div className="animate-fade-up" style={{ maxWidth: "520px", margin: "0 auto", textAlign: "center" }}>
-          <h2 style={{ fontSize: "20px", fontWeight: 700, color: "#fff", marginBottom: "8px" }}>
-            {loadingTitle}
-          </h2>
-          <p style={{ fontSize: "14px", color: "rgba(255,255,255,0.7)", margin: "0 0 24px 0", fontWeight: 500 }}>{loadingText}</p>
+        <div className="animate-fade-up" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "70vh" }}>
+          <div style={{
+            width: "100%", maxWidth: "540px",
+            background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(255,255,255,0.1)",
+            borderRadius: "20px",
+            padding: "28px",
+            boxShadow: "0 32px 80px rgba(0,0,0,0.6)",
+          }}>
+            {/* Header */}
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "24px" }}>
+              <div>
+                <p style={{ margin: 0, fontSize: "11px", fontWeight: 700, letterSpacing: "2px", color: "rgba(255,255,255,0.5)", textTransform: "uppercase", fontFamily: "monospace" }}>
+                  Processing Pipeline
+                </p>
+                <p style={{ margin: "4px 0 0", fontSize: "13px", color: "rgba(255,255,255,0.4)" }}>
+                  {totalClips > 1 ? `Processing clip ${currentClipIndex} of ${totalClips}` : "AI Core Engine is actively crafting your clip"}
+                </p>
+              </div>
+              {/* Live badge */}
+              <div style={{
+                display: "flex", alignItems: "center", gap: "6px",
+                padding: "5px 10px", borderRadius: "20px",
+                background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)",
+              }}>
+                <div style={{
+                  width: "6px", height: "6px", borderRadius: "50%",
+                  background: "#fbbf24",
+                  boxShadow: "0 0 6px #fbbf24",
+                  animation: "pulse-dot 2s ease-in-out infinite",
+                }} />
+                <span style={{ fontSize: "10px", fontWeight: 700, letterSpacing: "1.5px", color: "#fbbf24", fontFamily: "monospace" }}>LIVE ENGINE</span>
+              </div>
+            </div>
 
-          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "12px", marginBottom: "32px", flexWrap: "wrap" }}>
-            {steps.map((step) => {
-              const isActive = currentStep === step.id;
-              const isPassed = currentStep > step.id;
-              return (
-                <div key={step.id} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            {/* Main content: progress circle + task info */}
+            <div style={{ display: "flex", gap: "24px", marginBottom: "28px", alignItems: "center" }}>
+              {/* Progress circle */}
+              <div style={{
+                width: "130px", height: "130px", flexShrink: 0,
+                background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: "16px",
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                gap: "4px",
+              }}>
+                <span style={{ fontSize: "32px", fontWeight: 800, color: "#fff", fontFamily: "monospace", letterSpacing: "-1px" }}>
+                  {progressPct}%
+                </span>
+                {/* Mini progress bar */}
+                <div style={{ width: "80px", height: "3px", background: "rgba(255,255,255,0.1)", borderRadius: "2px", overflow: "hidden" }}>
                   <div style={{
-                    width: "32px", height: "32px", borderRadius: "50%",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: "12px", fontWeight: 700,
-                    border: `1px solid ${isActive ? "rgba(255,255,255,0.8)" : isPassed ? "#fff" : "rgba(255,255,255,0.15)"}`,
-                    background: isActive ? "rgba(255,255,255,0.12)" : isPassed ? "rgba(255,255,255,0.8)" : "transparent",
-                    color: isActive || isPassed ? "#fff" : "rgba(255,255,255,0.4)",
-                    transition: "all 0.4s",
-                  }}>{isPassed ? "✓" : step.id}</div>
-                  <span style={{ fontSize: "13px", color: isActive ? "#fff" : isPassed ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.4)", fontWeight: isActive ? 600 : 400 }}>
-                    {step.label}
-                  </span>
-                  {step.id < steps[steps.length - 1].id && <div style={{ width: "20px", height: "1px", background: "rgba(255,255,255,0.15)" }} />}
+                    height: "100%", borderRadius: "2px",
+                    background: "#fff",
+                    width: `${progressPct}%`,
+                    transition: "width 1s ease",
+                  }} />
                 </div>
-              );
-            })}
-          </div>
+              </div>
 
-          <div style={{ display: "flex", justifyContent: "center", margin: "32px 0 16px" }}>
-            <div className="animate-spin" style={{
-              width: "48px", height: "48px", borderRadius: "50%",
-              border: "3px solid rgba(255,255,255,0.1)", borderTopColor: "#fff",
-            }} />
+              {/* Task info */}
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: "0 0 10px", fontSize: "10px", fontWeight: 700, letterSpacing: "1.5px", color: "rgba(255,255,255,0.35)", textTransform: "uppercase", fontFamily: "monospace" }}>
+                  Current Sub-Task
+                </p>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
+                  <div className="animate-spin" style={{ width: "14px", height: "14px", borderRadius: "50%", border: "2px solid rgba(255,255,255,0.15)", borderTopColor: "#fff", flexShrink: 0 }} />
+                  <span style={{ fontSize: "14px", color: "#fff", fontWeight: 500 }}>{loadingText}</span>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <div>
+                    <p style={{ margin: "0 0 3px", fontSize: "9px", fontWeight: 700, letterSpacing: "1px", color: "rgba(255,255,255,0.3)", textTransform: "uppercase", fontFamily: "monospace" }}>Hardware Cluster</p>
+                    <p style={{ margin: 0, fontSize: "11px", fontWeight: 700, color: "rgba(255,255,255,0.6)", fontFamily: "monospace" }}>LOCAL-CPU-NODE</p>
+                  </div>
+                  <div>
+                    <p style={{ margin: "0 0 3px", fontSize: "9px", fontWeight: 700, letterSpacing: "1px", color: "rgba(255,255,255,0.3)", textTransform: "uppercase", fontFamily: "monospace" }}>Estimated Time</p>
+                    <p style={{ margin: 0, fontSize: "11px", fontWeight: 700, color: "rgba(255,255,255,0.6)", fontFamily: "monospace" }}>STREAM DEPENDENT</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Pipeline milestones */}
+            <div>
+              <p style={{ margin: "0 0 12px", fontSize: "10px", fontWeight: 700, letterSpacing: "2px", color: "rgba(255,255,255,0.35)", textTransform: "uppercase", fontFamily: "monospace" }}>
+                Pipeline Milestones
+              </p>
+              <div style={{ display: "flex", gap: "8px" }}>
+                {steps.map((step) => {
+                  const isActive = currentStep === step.id;
+                  const isPassed = currentStep > step.id;
+                  const subTexts: Record<string, string> = {
+                    "Unduh": "Fetch source by the Video source.",
+                    "Ekstrak": "Extract clip from source video.",
+                    "Subtitle": "Transcribe and burn subtitles.",
+                    "Selesai": "Finalize and export clip.",
+                  };
+                  return (
+                    <div key={step.id} style={{
+                      flex: 1, padding: "10px 10px",
+                      borderRadius: "10px",
+                      background: isActive ? "rgba(255,255,255,0.08)" : isPassed ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.02)",
+                      border: isActive ? "1px solid rgba(255,255,255,0.25)" : isPassed ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(255,255,255,0.05)",
+                      transition: "all 0.4s",
+                    }}>
+                      <p style={{ margin: "0 0 4px", fontSize: "9px", fontWeight: 700, color: "rgba(255,255,255,0.4)", fontFamily: "monospace" }}>
+                        {String(step.id).padStart(2, "0")}
+                      </p>
+                      <p style={{ margin: "0 0 4px", fontSize: "11px", fontWeight: 800, color: isActive ? "#fff" : isPassed ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.25)", letterSpacing: "0.5px", textTransform: "uppercase" }}>
+                        {isPassed ? "✓ " : ""}{step.label}
+                      </p>
+                      <p style={{ margin: 0, fontSize: "10px", color: "rgba(255,255,255,0.3)", lineHeight: 1.4 }}>
+                        {subTexts[step.label] ?? "Processing..."}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
-          <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>Jangan tutup tab ini. Video Anda sedang diproses secara lokal.</p>
         </div>
       )}
 

@@ -12,7 +12,7 @@ const NAV_LINKS = [
 export default function HomePage() {
   const router = useRouter();
   const [inputUrl, setInputUrl] = useState("");
-  const [showDropdown, setShowDropdown] = useState(false);
+  const [showProModal, setShowProModal] = useState(false);
 
   function handleGetClips() {
     if (inputUrl.trim()) {
@@ -49,115 +49,25 @@ export default function HomePage() {
 
         {/* Nav Links */}
         <nav style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-          
-          {/* Fitur Dropdown Wrapper */}
-          <div 
-            onMouseEnter={() => setShowDropdown(true)}
-            onMouseLeave={() => setShowDropdown(false)}
-            style={{ position: "relative" }}
-          >
-            <button style={{
-              padding: "7px 16px", borderRadius: "8px",
-              background: showDropdown ? "rgba(255,255,255,0.06)" : "transparent",
-              border: "none",
-              color: showDropdown ? "#fff" : "rgba(255,255,255,0.7)", 
-              fontSize: "14px",
-              cursor: "pointer", transition: "all 0.2s",
-              display: "flex", alignItems: "center", gap: "6px",
-            }}
-            >
-              Fitur 
-              <svg 
-                width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" 
-                style={{ 
-                  transform: showDropdown ? "rotate(180deg)" : "rotate(0deg)", 
-                  transition: "transform 0.2s ease",
-                  opacity: 0.8
-                }}
-              >
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
 
-            {/* Dropdown Menu */}
-            {showDropdown && (
-              <div style={{
-                position: "absolute",
-                top: "calc(100% + 12px)",
-                left: "50%",
-                transform: "translateX(-50%)",
-                width: "420px",
-                background: "#18181f",
-                border: "1px solid rgba(255, 255, 255, 0.15)",
-                borderRadius: "16px",
-                padding: "20px",
-                boxShadow: "0 20px 50px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.1)",
-                display: "flex",
-                flexDirection: "column",
-                gap: "8px",
-                zIndex: 1000,
-              }}>
-                {[
-                  {
-                    title: "Generate Video Clip",
-                    desc: "Ubah video YouTube panjang jadi klip pendek otomatis.",
-                    icon: "🎬",
-                  },
-                  {
-                    title: "Generate Ide Caption",
-                    desc: "Dapatkan saran caption keren berbasis AI instan.",
-                    icon: "✍️",
-                  },
-                  {
-                    title: "AI Subtitle Generator",
-                    desc: "Tambahkan subtitle otomatis dengan akurasi tinggi.",
-                    icon: "🗣️",
-                  }
-                ].map((item, idx) => (
-                  <div 
-                    key={idx}
-                    onClick={() => router.push("/login")}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "16px",
-                      padding: "12px",
-                      borderRadius: "12px",
-                      cursor: "pointer",
-                      transition: "background 0.2s, transform 0.2s",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
-                      e.currentTarget.style.transform = "translateY(-1px)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = "transparent";
-                      e.currentTarget.style.transform = "translateY(0)";
-                    }}
-                  >
-                    <div style={{
-                      width: "44px", height: "44px", borderRadius: "10px",
-                      background: "rgba(255, 255, 255, 0.04)",
-                      border: "1px solid rgba(255, 255, 255, 0.1)",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: "20px",
-                      flexShrink: 0,
-                    }}>
-                      {item.icon}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <h4 style={{ fontSize: "15px", fontWeight: 700, color: "#fff", margin: 0, letterSpacing: "-0.2px" }}>
-                        {item.title}
-                      </h4>
-                      <p style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.5)", margin: "4px 0 0", lineHeight: 1.4 }}>
-                        {item.desc}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Beranda button (active) */}
+          <button style={{
+            padding: "7px 16px", borderRadius: "8px",
+            background: "rgba(255,255,255,0.08)", border: "none",
+            color: "#fff", fontSize: "14px", fontWeight: 600,
+            cursor: "default",
+          }}>Beranda</button>
+
+          {/* Fitur button */}
+          <button onClick={() => router.push("/fitur")} style={{
+            padding: "7px 16px", borderRadius: "8px",
+            background: "transparent", border: "none",
+            color: "rgba(255,255,255,0.7)", fontSize: "14px",
+            cursor: "pointer", transition: "color 0.2s",
+          }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.7)")}
+          >Fitur</button>
 
           {/* Tentang button */}
           <button onClick={() => router.push("/tentang")} style={{
@@ -170,6 +80,19 @@ export default function HomePage() {
             onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.7)")}
           >
             Tentang
+          </button>
+
+          {/* Pricing button */}
+          <button onClick={() => setShowProModal(true)} style={{
+            padding: "7px 16px", borderRadius: "8px",
+            background: "transparent", border: "none",
+            color: "rgba(255,255,255,0.7)", fontSize: "14px",
+            cursor: "pointer", transition: "color 0.2s",
+          }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.7)")}
+          >
+            Pricing
           </button>
         </nav>
 
@@ -242,7 +165,7 @@ export default function HomePage() {
           letterSpacing: "0.5px", position: "relative", zIndex: 2,
         }}>
           <span style={{ color: "#f97316" }}>#1</span>
-          <span style={{ color: "rgba(255,255,255,0.75)" }}>VIDEO CLIPPING TOOL LOKAL</span>
+          <span style={{ color: "rgba(255,255,255,0.75)" }}>FOR YOUR PAGE</span>
         </div>
 
         {/* Headline */}
@@ -258,7 +181,7 @@ export default function HomePage() {
           position: "relative", zIndex: 2,
           textShadow: "0 2px 20px rgba(0,0,0,0.5)",
         }}>
-          1 video panjang,<br />klip siap pakai. Instan.
+         ProductiveClip.
         </h1>
 
         {/* Sub */}
@@ -269,8 +192,7 @@ export default function HomePage() {
           position: "relative", zIndex: 2,
           textShadow: "0 1px 10px rgba(0,0,0,0.5)",
         }}>
-          Productive Clip mengubah video YouTube panjang menjadi klip pendek
-          berkualitas tinggi — langsung di perangkat Anda, tanpa akun cloud.
+        Salin - Tempel - Generate - Unduh - FYP
         </p>
 
         {/* ── Input + Button Row ── */}
@@ -347,15 +269,6 @@ export default function HomePage() {
             }}
           >Upload files</button>
         </div>
-
-        {/* Small hint */}
-        <p className="animate-fade-up" style={{
-          fontSize: "12px", color: "rgba(255,255,255,0.45)",
-          marginBottom: "64px", animationDelay: "0.2s",
-          position: "relative", zIndex: 2,
-        }}>
-          Supports YouTube · No account needed · 100% local
-        </p>
 
         {/* ── Preview Cards Row ── */}
         <div className="animate-fade-up" style={{
@@ -487,10 +400,10 @@ export default function HomePage() {
       {/* ══════════════ CTA SECTION ══════════════ */}
       <section style={{ padding: "80px 40px", textAlign: "center", background: "#000" }}>
         <h2 style={{ fontSize: "40px", fontWeight: 800, letterSpacing: "-1.5px", marginBottom: "16px" }}>
-          Coba sekarang. Gratis.
+          ==TRY NOW==
         </h2>
         <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "16px", marginBottom: "36px" }}>
-          Tidak perlu daftar. Tidak perlu bayar. Langsung pakai.
+          Ubah Video Panjang Mu Menjadi Video Pendek.
         </p>
         <button
           onClick={() => router.push("/login")}
@@ -502,10 +415,203 @@ export default function HomePage() {
           }}
           onMouseEnter={(e) => (e.currentTarget.style.background = "#e5e5e5")}
           onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
-        >Mulai Gratis →</button>
+        >Mulai</button>
       </section>
 
       <Footer />
+
+      {/* ── Pro Pricing Modal ── */}
+      {showProModal && (
+        <>
+          {/* Backdrop */}
+          <div
+            onClick={() => setShowProModal(false)}
+            style={{
+              position: "fixed", inset: 0, zIndex: 999,
+              background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
+            }}
+          />
+
+          {/* Modal */}
+          <div style={{
+            position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+            zIndex: 1000, width: "min(860px, 95vw)", maxHeight: "90vh", overflowY: "auto",
+            background: "#0d0d0d", border: "1px solid rgba(255,255,255,0.1)",
+            borderRadius: "20px", padding: "40px 36px",
+          }}>
+            {/* Close button */}
+            <button
+              onClick={() => setShowProModal(false)}
+              style={{
+                position: "absolute", top: "16px", right: "16px",
+                width: "32px", height: "32px", borderRadius: "50%",
+                background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)",
+                color: "rgba(255,255,255,0.7)", cursor: "pointer", fontSize: "16px",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                transition: "background 0.15s",
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.15)")}
+              onMouseLeave={e => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
+            >
+              ×
+            </button>
+
+            {/* Header */}
+            <div style={{ textAlign: "center", marginBottom: "36px" }}>
+              <div style={{
+                display: "inline-flex", alignItems: "center", gap: "6px",
+                padding: "5px 14px", borderRadius: "20px",
+                background: "#f59e0b", marginBottom: "16px",
+              }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="3">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                </svg>
+                <span style={{ fontSize: "11px", fontWeight: 800, color: "#000", letterSpacing: "0.8px", textTransform: "uppercase" }}>Premium Access</span>
+              </div>
+              <h2 style={{ fontSize: "36px", fontWeight: 800, color: "#fff", margin: "0 0 10px", letterSpacing: "-0.5px" }}>Upgrade to Pro</h2>
+              <p style={{ fontSize: "14px", color: "rgba(255,255,255,0.5)", margin: 0 }}>
+                Buka potensi penuh clipper Anda dengan fitur AI tercanggih di industri.
+              </p>
+            </div>
+
+            {/* Pricing cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px" }}>
+
+              {/* Free */}
+              <div style={{
+                borderRadius: "16px", padding: "24px",
+                background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)",
+                display: "flex", flexDirection: "column",
+              }}>
+                <p style={{ margin: "0 0 4px", fontSize: "15px", fontWeight: 700, color: "#fff" }}>Free</p>
+                <div style={{ marginBottom: "12px" }}>
+                  <span style={{ fontSize: "32px", fontWeight: 800, color: "#fff" }}>Rp0</span>
+                  <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)", marginLeft: "4px" }}>/bulan</span>
+                </div>
+                <p style={{ margin: "0 0 20px", fontSize: "12px", color: "rgba(255,255,255,0.5)", lineHeight: 1.5 }}>
+                  Untuk pemula yang baru memulai perjalanan clipping.
+                </p>
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "10px", marginBottom: "24px" }}>
+                  {[
+                    { text: "AI Clipping Dasar", included: true },
+                    { text: "Export 720p", included: true },
+                    { text: "Cloud Storage (2GB)", included: false },
+                  ].map((f, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      {f.included
+                        ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
+                        : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                      }
+                      <span style={{ fontSize: "13px", color: f.included ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.25)", textDecoration: f.included ? "none" : "line-through" }}>{f.text}</span>
+                    </div>
+                  ))}
+                </div>
+                <button style={{
+                  width: "100%", padding: "11px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.15)",
+                  background: "transparent", color: "rgba(255,255,255,0.6)", fontSize: "13px", fontWeight: 600,
+                  cursor: "pointer", transition: "all 0.2s",
+                }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.color = "#fff"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}
+                >
+                  Pilih Paket
+                </button>
+              </div>
+
+              {/* Clipper Pro (highlighted) */}
+              <div style={{
+                borderRadius: "16px", padding: "24px",
+                background: "rgba(251,191,36,0.06)", border: "2px solid #f59e0b",
+                display: "flex", flexDirection: "column", position: "relative",
+              }}>
+                <div style={{
+                  position: "absolute", top: "-13px", left: "50%", transform: "translateX(-50%)",
+                  padding: "4px 14px", borderRadius: "20px", background: "#f59e0b",
+                  fontSize: "10px", fontWeight: 800, color: "#000", letterSpacing: "0.5px",
+                  textTransform: "uppercase", whiteSpace: "nowrap",
+                }}>
+                  Best for Productive Clip
+                </div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+                  <p style={{ margin: 0, fontSize: "15px", fontWeight: 700, color: "#fff" }}>Clipper Pro</p>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b" stroke="none"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
+                </div>
+                <div style={{ marginBottom: "12px" }}>
+                  <span style={{ fontSize: "32px", fontWeight: 800, color: "#fff" }}>Rp149k</span>
+                  <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)", marginLeft: "4px" }}>/3 bulan</span>
+                </div>
+                <p style={{ margin: "0 0 20px", fontSize: "12px", color: "rgba(255,255,255,0.5)", lineHeight: 1.5 }}>
+                  Maksimalkan konten Anda dengan fitur pro tak terbatas.
+                </p>
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "10px", marginBottom: "24px" }}>
+                  {[
+                    "AI Auto-Clipping Pro",
+                    "Export 4K Ultra HD",
+                    "Cloud Storage (100GB)",
+                    "Priority Rendering",
+                    "Multi-platform distribution",
+                  ].map((f, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
+                      <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.85)" }}>{f}</span>
+                    </div>
+                  ))}
+                </div>
+                <button style={{
+                  width: "100%", padding: "11px", borderRadius: "10px", border: "none",
+                  background: "#f59e0b", color: "#000", fontSize: "13px", fontWeight: 800,
+                  cursor: "pointer", transition: "background 0.2s",
+                }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "#fbbf24")}
+                  onMouseLeave={e => (e.currentTarget.style.background = "#f59e0b")}
+                >
+                  Pilih Paket
+                </button>
+              </div>
+
+              {/* Agency */}
+              <div style={{
+                borderRadius: "16px", padding: "24px",
+                background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)",
+                display: "flex", flexDirection: "column",
+              }}>
+                <p style={{ margin: "0 0 4px", fontSize: "15px", fontWeight: 700, color: "#fff" }}>Agency</p>
+                <div style={{ marginBottom: "12px" }}>
+                  <span style={{ fontSize: "32px", fontWeight: 800, color: "#fff" }}>Rp499k</span>
+                  <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)", marginLeft: "4px" }}>/3 bulan</span>
+                </div>
+                <p style={{ margin: "0 0 20px", fontSize: "12px", color: "rgba(255,255,255,0.5)", lineHeight: 1.5 }}>
+                  Solusi skala besar untuk tim dan agensi konten.
+                </p>
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "10px", marginBottom: "24px" }}>
+                  {[
+                    "Semua Fitur Pro",
+                    "Team Collaboration (10 Device)",
+                    "Unlimited Cloud Storage",
+                    "Dedicated Account Manager",
+                  ].map((f, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
+                      <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.85)" }}>{f}</span>
+                    </div>
+                  ))}
+                </div>
+                <button style={{
+                  width: "100%", padding: "11px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.15)",
+                  background: "transparent", color: "rgba(255,255,255,0.6)", fontSize: "13px", fontWeight: 600,
+                  cursor: "pointer", transition: "all 0.2s",
+                }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.color = "#fff"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}
+                >
+                  Pilih Paket
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

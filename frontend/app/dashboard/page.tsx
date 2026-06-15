@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 
@@ -42,6 +42,428 @@ function recalculateStarts(clips: ClipEntry[], fromIndex = 1): ClipEntry[] {
 
 const MAX_CLIPS = 5;
 
+/* ── Generate Modal Types ── */
+interface ModalClipJob { start: number; startTime: string; duration: number; }
+interface ModalClipResult { clip_url: string; filename: string; message: string; transcript?: string; }
+interface ModalBatch { url: string; clips: ModalClipJob[]; addSubtitle?: boolean; autoMode?: boolean; subtitleStyle?: string; layout?: string; }
+type ModalPlatform = "instagram" | "tiktok" | "youtube";
+
+function GenerateModal({ batch, onClose, isMobile }: { batch: ModalBatch; onClose: () => void; isMobile: boolean }) {
+  const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
+  const [currentStep, setCurrentStep] = useState(1);
+  const [results, setResults] = useState<ModalClipResult[]>([]);
+  const [clipJobs, setClipJobs] = useState<ModalClipJob[]>([]);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [currentClipIndex, setCurrentClipIndex] = useState(0);
+  const [totalClips, setTotalClips] = useState(1);
+  const [loadingText, setLoadingText] = useState("Menghubungkan ke API...");
+  const [withSubtitle, setWithSubtitle] = useState(false);
+  const [isAutoMode, setIsAutoMode] = useState(false);
+  const [clipCaptions, setClipCaptions] = useState<Array<Record<ModalPlatform, string>>>([]);
+  const [clipCaptionStatus, setClipCaptionStatus] = useState<Array<"idle" | "loading" | "done" | "error">>([]);
+  const [activePlatforms, setActivePlatforms] = useState<ModalPlatform[]>([]);
+  const [copiedKeys, setCopiedKeys] = useState<Record<string, boolean>>({});
+  const [progressPct, setProgressPct] = useState(0);
+  const activeRef = useRef(true);
+
+  async function generateOne(videoUrl: string, clip: ModalClipJob, addSubtitle: boolean, subtitleStyle: string, layoutVal: string): Promise<ModalClipResult> {
+    if (!activeRef.current) throw new Error("Dibatalkan");
+    setCurrentStep(1);
+    setLoadingText("Mengunduh bagian video dari YouTube (yt-dlp)...");
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    if (!activeRef.current) throw new Error("Dibatalkan");
+    setCurrentStep(2);
+    setLoadingText("Mengekstrak klip video (MoviePy)...");
+    const res = await fetch("http://localhost:8000/generate-clip", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: videoUrl, start_time: clip.start, duration: clip.duration, add_subtitle: addSubtitle, subtitle_style: subtitleStyle, layout: layoutVal }),
+    });
+    if (addSubtitle && activeRef.current) { setCurrentStep(3); setLoadingText("Transkripsi audio dengan Whisper AI..."); }
+    if (!res.ok) { const err = await res.json().catch(() => ({ detail: "Gagal memproses video" })); throw new Error(err.detail ?? "Gagal memproses video"); }
+    return res.json();
+  }
+
+  useEffect(() => {
+    activeRef.current = true;
+    async function runGeneration() {
+      const jobs = batch.clips.map(clip => ({ videoUrl: batch.url, clip }));
+      if (jobs.length === 0) { setErrorMsg("Data klip tidak ditemukan"); setStatus("error"); return; }
+      setClipJobs(jobs.map(j => j.clip));
+      setTotalClips(jobs.length);
+      const addSubtitle = batch.addSubtitle ?? false;
+      setWithSubtitle(addSubtitle);
+      setIsAutoMode(batch.autoMode ?? false);
+      const subtitleStyle = batch.subtitleStyle ?? "mozi";
+      const layoutVal = batch.layout ?? "blur";
+      const completed: ModalClipResult[] = [];
+      const errors: string[] = [];
+      try {
+        for (let i = 0; i < jobs.length; i++) {
+          if (!activeRef.current) return;
+          setCurrentClipIndex(i + 1);
+          setCurrentStep(1);
+          setLoadingText(jobs.length > 1 ? `Memproses klip ${i + 1} dari ${jobs.length}...` : "Mengunduh bagian video dari YouTube (yt-dlp)...");
+          try {
+            const data = await generateOne(jobs[i].videoUrl, jobs[i].clip, addSubtitle, subtitleStyle, layoutVal);
+            if (!activeRef.current) return;
+            setCurrentStep(addSubtitle ? 4 : 3);
+            setLoadingText(jobs.length > 1 ? `Klip ${i + 1} selesai!` : "Klip selesai dibuat!");
+            completed.push(data);
+            setResults([...completed]);
+          } catch (e: unknown) { errors.push(`Klip ${i + 1}: ${e instanceof Error ? e.message : "Terjadi kesalahan"}`); }
+        }
+        if (!activeRef.current) return;
+        sessionStorage.removeItem("autoclip_batch");
+        if (completed.length === 0) { setErrorMsg(errors.join("\n")); setStatus("error"); return; }
+        if (errors.length > 0) setErrorMsg(`${completed.length} klip berhasil, ${errors.length} gagal:\n${errors.join("\n")}`);
+        setStatus("success");
+        const initialStatuses = completed.map(r => r.transcript ? "loading" as const : "idle" as const);
+        const initialCaptions = completed.map(() => ({ instagram: "", tiktok: "", youtube: "" }));
+        const initialPlatforms: ModalPlatform[] = completed.map(() => "instagram");
+        setClipCaptions(initialCaptions);
+        setClipCaptionStatus(initialStatuses);
+        setActivePlatforms(initialPlatforms);
+        completed.forEach(async (clipResult, idx) => {
+          if (!clipResult.transcript || !activeRef.current) return;
+          try {
+            const capRes = await fetch("http://localhost:8000/generate-caption", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ transcript: clipResult.transcript }) });
+            if (!activeRef.current) return;
+            if (capRes.ok) {
+              const capData = await capRes.json();
+              setClipCaptions(prev => { const next = [...prev]; next[idx] = { instagram: capData.instagram, tiktok: capData.tiktok, youtube: capData.youtube }; return next; });
+              setClipCaptionStatus(prev => { const next = [...prev]; next[idx] = "done"; return next; });
+            } else { setClipCaptionStatus(prev => { const next = [...prev]; next[idx] = "error"; return next; }); }
+          } catch { if (!activeRef.current) return; setClipCaptionStatus(prev => { const next = [...prev]; next[idx] = "error"; return next; }); }
+        });
+      } catch (e: unknown) { if (!activeRef.current) return; setErrorMsg(e instanceof Error ? e.message : "Terjadi kesalahan"); setStatus("error"); }
+    }
+    runGeneration();
+    return () => { activeRef.current = false; };
+  }, []);
+
+  useEffect(() => {
+    if (status !== "loading") { setProgressPct(0); return; }
+    setProgressPct(0);
+    const targets = [8, 20, 35, 55, 72, 85, 92, 97];
+    const intervals = [1200, 2500, 4000, 8000, 15000, 25000, 40000];
+    const timers = intervals.map((ms, i) => setTimeout(() => { if (i + 1 < targets.length) setProgressPct(targets[i + 1]); }, ms));
+    return () => timers.forEach(clearTimeout);
+  }, [status]);
+
+  async function copyCaption(clipIdx: number, platform: ModalPlatform) {
+    const text = clipCaptions[clipIdx]?.[platform];
+    if (!text) return;
+    const key = `${clipIdx}-${platform}`;
+    try { await navigator.clipboard.writeText(text); setCopiedKeys(prev => ({ ...prev, [key]: true })); setTimeout(() => setCopiedKeys(prev => { const n = { ...prev }; delete n[key]; return n; }), 2000); } catch { /* fallback */ }
+  }
+  function setClipPlatform(clipIdx: number, platform: ModalPlatform) { setActivePlatforms(prev => { const n = [...prev]; n[clipIdx] = platform; return n; }); }
+  async function downloadClip(clipResult: ModalClipResult) {
+    setDownloadingId(clipResult.filename);
+    try { const res = await fetch(clipResult.clip_url); if (!res.ok) throw new Error("Gagal mengunduh file"); const blob = await res.blob(); const objectUrl = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = objectUrl; a.download = clipResult.filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(objectUrl); } catch (e: unknown) { console.error(e); } finally { setDownloadingId(null); }
+  }
+
+  function handleCancel() {
+    activeRef.current = false;
+    onClose();
+  }
+
+  const steps = withSubtitle
+    ? [{ id: 1, label: "Unduh" }, { id: 2, label: "Ekstrak" }, { id: 3, label: "Subtitle" }, { id: 4, label: "Selesai" }]
+    : [{ id: 1, label: "Unduh" }, { id: 2, label: "Ekstrak" }, { id: 3, label: "Selesai" }];
+  const loadingTitle = isAutoMode
+    ? totalClips > 1 ? `Auto Generate (${currentClipIndex}/${totalClips})` : "Auto Generate Klip"
+    : totalClips > 1 ? `Sedang Membuat Klip (${currentClipIndex}/${totalClips})` : "Sedang Membuat Klip";
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div onClick={status !== "loading" ? onClose : undefined} style={{
+        position: "fixed", inset: 0, zIndex: 999,
+        background: "rgba(0,0,0,0.8)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+        cursor: status !== "loading" ? "pointer" : "default",
+      }} />
+
+      {/* Modal content */}
+      <div style={{
+        position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+        zIndex: 1000, width: "min(620px, 94vw)", maxHeight: "88vh", overflowY: "auto",
+        background: "#0d0d0d", border: "1px solid rgba(255,255,255,0.1)",
+        borderRadius: "20px", padding: isMobile ? "20px 16px" : "28px",
+        boxShadow: "0 32px 80px rgba(0,0,0,0.8)",
+      }}>
+        {/* Inject keyframes locally to bypass Tailwind v4 CSS processing */}
+        <style>{`
+          @keyframes water-wave { 0%,100% { transform: translateX(0) scaleY(1); } 50% { transform: translateX(-14px) scaleY(1.4); } }
+          @keyframes water-wave-alt { 0%,100% { transform: translateX(0) scaleY(1.2); } 50% { transform: translateX(10px) scaleY(0.7); } }
+          @keyframes water-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+        `}</style>
+
+        {/* Close button */}
+        {status !== "loading" && (
+          <button onClick={onClose} style={{
+            position: "absolute", top: "14px", right: "14px",
+            width: "30px", height: "30px", borderRadius: "50%",
+            background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)",
+            color: "rgba(255,255,255,0.7)", cursor: "pointer", fontSize: "15px",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            transition: "background 0.15s",
+          }}
+            onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.15)")}
+            onMouseLeave={e => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
+          >×</button>
+        )}
+
+        {/* ── LOADING ── */}
+        {status === "loading" && (
+          <div>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "24px" }}>
+              <div>
+                <p style={{ margin: 0, fontSize: "11px", fontWeight: 700, letterSpacing: "2px", color: "rgba(255,255,255,0.5)", textTransform: "uppercase", fontFamily: "monospace" }}>Processing Pipeline</p>
+                <p style={{ margin: "4px 0 0", fontSize: "13px", color: "rgba(255,255,255,0.4)" }}>
+                  {totalClips > 1 ? `Processing clip ${currentClipIndex} of ${totalClips}` : "AI Core Engine is actively crafting your clip"}
+                </p>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "5px 10px", borderRadius: "20px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)" }}>
+                <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#fbbf24", boxShadow: "0 0 6px #fbbf24", animation: "pulse-dot 2s ease-in-out infinite" }} />
+                <span style={{ fontSize: "10px", fontWeight: 700, letterSpacing: "1.5px", color: "#fbbf24", fontFamily: "monospace" }}>LIVE ENGINE</span>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "24px", marginBottom: "28px", alignItems: isMobile ? "center" : "center", flexDirection: isMobile ? "column" : "row" }}>
+              <div style={{
+                position: "relative", width: "152px", height: "152px", borderRadius: "22px",
+                background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)",
+                overflow: "hidden", flexShrink: 0,
+              }}>
+                {/* Water fill */}
+                <div style={{
+                  position: "absolute", bottom: 0, left: 0, right: 0,
+                  height: `${progressPct}%`,
+                  background: "linear-gradient(to top, rgba(59,130,246,0.55), rgba(96,165,250,0.2))",
+                  transition: "height 1.2s cubic-bezier(0.4,0,0.2,1)",
+                  animation: "water-bob 2s ease-in-out infinite",
+                }}>
+                  {/* Wave 1 - main surface ripple */}
+                  <div style={{
+                    position: "absolute", top: "-8px", left: "-30px", right: "-30px",
+                    height: "20px", borderRadius: "45%",
+                    background: "rgba(59,130,246,0.6)",
+                    animation: "water-wave 2.2s ease-in-out infinite",
+                  }} />
+                  {/* Wave 2 - secondary ripple */}
+                  <div style={{
+                    position: "absolute", top: "-5px", left: "-20px", right: "-20px",
+                    height: "16px", borderRadius: "48%",
+                    background: "rgba(96,165,250,0.4)",
+                    animation: "water-wave-alt 2.8s ease-in-out infinite",
+                  }} />
+                </div>
+                {/* Percentage text */}
+                <div style={{
+                  position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+                  alignItems: "center", justifyContent: "center", zIndex: 10,
+                  fontFamily: "monospace", fontSize: "34px", fontWeight: 900, letterSpacing: "-1px",
+                  color: progressPct > 50 ? "#fff" : "rgba(255,255,255,0.9)",
+                  transition: "color 0.4s ease",
+                }}>
+                  <span>{progressPct}%</span>
+                  <div style={{
+                    width: "72px", height: "3px", marginTop: "5px",
+                    background: "rgba(255,255,255,0.12)", borderRadius: "2px", overflow: "hidden",
+                  }}>
+                    <div style={{
+                      height: "100%", borderRadius: "2px",
+                      width: `${progressPct}%`,
+                      background: progressPct > 50 ? "rgba(255,255,255,0.7)" : "#fff",
+                      transition: "width 1s ease",
+                    }} />
+                  </div>
+                </div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: "0 0 10px", fontSize: "10px", fontWeight: 700, letterSpacing: "1.5px", color: "rgba(255,255,255,0.35)", textTransform: "uppercase", fontFamily: "monospace" }}>Current Sub-Task</p>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
+                  <div className="animate-spin" style={{ width: "14px", height: "14px", borderRadius: "50%", border: "2px solid rgba(255,255,255,0.15)", borderTopColor: "#fff", flexShrink: 0 }} />
+                  <span style={{ fontSize: "14px", color: "#fff", fontWeight: 500 }}>{loadingText}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "12px" }}>
+                  <div>
+                    <p style={{ margin: "0 0 3px", fontSize: "9px", fontWeight: 700, letterSpacing: "1px", color: "rgba(255,255,255,0.3)", textTransform: "uppercase", fontFamily: "monospace" }}>Hardware Cluster</p>
+                    <p style={{ margin: 0, fontSize: "11px", fontWeight: 700, color: "rgba(255,255,255,0.6)", fontFamily: "monospace" }}>LOCAL-CPU-NODE</p>
+                  </div>
+                  <div>
+                    <p style={{ margin: "0 0 3px", fontSize: "9px", fontWeight: 700, letterSpacing: "1px", color: "rgba(255,255,255,0.3)", textTransform: "uppercase", fontFamily: "monospace" }}>Estimated Time</p>
+                    <p style={{ margin: 0, fontSize: "11px", fontWeight: 700, color: "rgba(255,255,255,0.6)", fontFamily: "monospace" }}>STREAM DEPENDENT</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <p style={{ margin: "0 0 12px", fontSize: "10px", fontWeight: 700, letterSpacing: "2px", color: "rgba(255,255,255,0.35)", textTransform: "uppercase", fontFamily: "monospace" }}>Pipeline Milestones</p>
+              <div style={{ display: "flex", gap: "8px", flexWrap: isMobile ? "wrap" : "nowrap" }}>
+                {steps.map((step) => {
+                  const isActive = currentStep === step.id;
+                  const isPassed = currentStep > step.id;
+                  const subTexts: Record<string, string> = { "Unduh": "Fetch source by the Video source.", "Ekstrak": "Extract clip from source video.", "Subtitle": "Transcribe and burn subtitles.", "Selesai": "Finalize and export clip." };
+                  return (
+                    <div key={step.id} style={{ flex: 1, padding: "10px 10px", borderRadius: "10px", background: isActive ? "rgba(255,255,255,0.08)" : isPassed ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.02)", border: isActive ? "1px solid rgba(255,255,255,0.25)" : isPassed ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(255,255,255,0.05)", transition: "all 0.4s" }}>
+                      <p style={{ margin: "0 0 4px", fontSize: "9px", fontWeight: 700, color: "rgba(255,255,255,0.4)", fontFamily: "monospace" }}>{String(step.id).padStart(2, "0")}</p>
+                      <p style={{ margin: "0 0 4px", fontSize: "11px", fontWeight: 800, color: isActive ? "#fff" : isPassed ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.25)", letterSpacing: "0.5px", textTransform: "uppercase" }}>{isPassed ? "✓ " : ""}{step.label}</p>
+                      <p style={{ margin: 0, fontSize: "10px", color: "rgba(255,255,255,0.3)", lineHeight: 1.4 }}>{subTexts[step.label] ?? "Processing..."}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Cancel button */}
+            <button onClick={handleCancel} style={{
+              width: "100%", padding: "11px", borderRadius: "50px", marginTop: "20px",
+              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)",
+              color: "rgba(255,255,255,0.7)", fontSize: "13px", fontWeight: 600,
+              cursor: "pointer", transition: "all 0.2s",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+            }}
+              onMouseEnter={e => { e.currentTarget.style.background = "rgba(239,68,68,0.12)"; e.currentTarget.style.borderColor = "rgba(239,68,68,0.3)"; e.currentTarget.style.color = "#f87171"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; e.currentTarget.style.color = "rgba(255,255,255,0.7)"; }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {/* ── SUCCESS ── */}
+        {status === "success" && results.length > 0 && (
+          <div>
+            <div style={{ textAlign: "center", marginBottom: "24px" }}>
+              <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.3)", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#22c55e", fontSize: "24px", marginBottom: "12px" }}>✓</div>
+              <h2 style={{ fontSize: "20px", fontWeight: 700, color: "#fff", margin: 0 }}>{results.length > 1 ? `${results.length} Klip Berhasil Dibuat!` : "Klip Berhasil Dibuat!"}</h2>
+              {errorMsg && <p style={{ fontSize: "12px", color: "#fbbf24", marginTop: "8px", whiteSpace: "pre-line" }}>{errorMsg}</p>}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "20px", marginBottom: "20px" }}>
+              {results.map((clipResult, idx) => {
+                const capStatus = clipCaptionStatus[idx] ?? "idle";
+                const capData = clipCaptions[idx] ?? { instagram: "", tiktok: "", youtube: "" };
+                const platform = activePlatforms[idx] ?? "instagram";
+                const hasCap = capStatus !== "idle";
+                const copyKey = `${idx}-${platform}`;
+                const isCopied = !!copiedKeys[copyKey];
+                return (
+                  <div key={clipResult.filename} style={{ display: "grid", gridTemplateColumns: hasCap ? (isMobile ? "1fr" : "1fr 1fr") : "minmax(0,480px)", justifyContent: hasCap ? "stretch" : "center", gap: "16px", alignItems: "start" }}>
+                    <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "14px", padding: "16px" }}>
+                      {results.length > 1 && (
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                          <span style={{ fontSize: "12px", fontWeight: 600, color: "rgba(255,255,255,0.7)" }}>Klip {idx + 1}</span>
+                          <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)", fontFamily: "monospace" }}>{clipJobs[idx]?.startTime ?? "00:00:00"} · {clipJobs[idx]?.duration ?? 0}s</span>
+                        </div>
+                      )}
+                      <div style={{ borderRadius: "8px", overflow: "hidden", background: "#000", marginBottom: "10px" }}>
+                        <video controls preload="metadata" playsInline src={clipResult.clip_url} style={{ width: "100%", maxHeight: "220px", objectFit: "contain", display: "block" }} />
+                      </div>
+                      <button onClick={() => downloadClip(clipResult)} disabled={downloadingId === clipResult.filename} style={{
+                        width: "100%", padding: "9px", borderRadius: "50px", border: "none", background: "#fff", color: "#000", fontSize: "13px", fontWeight: 600,
+                        cursor: downloadingId === clipResult.filename ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+                        transition: "background 0.2s", opacity: downloadingId === clipResult.filename ? 0.5 : 1,
+                      }}
+                        onMouseEnter={e => { if (downloadingId !== clipResult.filename) e.currentTarget.style.background = "#e5e5e5"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = "#fff"; }}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                        {downloadingId === clipResult.filename ? "Mengunduh..." : "Download"}
+                      </button>
+                    </div>
+
+                    {hasCap && (
+                      <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "14px", padding: "16px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+                          <span style={{ fontSize: "13px", fontWeight: 700, color: "#fff" }}>Caption {results.length > 1 ? `Klip ${idx + 1}` : ""}</span>
+                          {capStatus === "loading" && <div className="animate-spin" style={{ width: "12px", height: "12px", borderRadius: "50%", border: "2px solid rgba(255,255,255,0.15)", borderTopColor: "#fff", flexShrink: 0 }} />}
+                        </div>
+                        {capStatus === "loading" && <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)", margin: "0 0 12px" }}>Groq AI sedang menulis...</p>}
+                        {capStatus === "error" && <p style={{ fontSize: "12px", color: "#f87171", margin: "0 0 12px" }}>Gagal generate caption.</p>}
+                        {capStatus === "done" && (
+                          <>
+                            <div style={{ display: "flex", gap: "4px", marginBottom: "10px", flexWrap: "wrap" }}>
+                              {(["instagram", "tiktok", "youtube"] as ModalPlatform[]).map(p => {
+                                const labels: Record<ModalPlatform, string> = { instagram: "Instagram", tiktok: "TikTok", youtube: "YT Shorts" };
+                                return (
+                                  <button key={p} onClick={() => setClipPlatform(idx, p)} style={{
+                                    padding: "4px 10px", borderRadius: "6px", fontSize: "11px", fontWeight: 600, cursor: "pointer",
+                                    background: platform === p ? "rgba(255,255,255,0.15)" : "transparent",
+                                    border: platform === p ? "1px solid rgba(255,255,255,0.35)" : "1px solid rgba(255,255,255,0.1)",
+                                    color: platform === p ? "#fff" : "rgba(255,255,255,0.5)", transition: "all 0.15s",
+                                  }}>{labels[p]}</button>
+                                );
+                              })}
+                            </div>
+                            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "8px", padding: "12px", marginBottom: "10px" }}>
+                              <p style={{ margin: 0, fontSize: "12px", color: "rgba(255,255,255,0.8)", lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: "160px", overflowY: "auto" }}>{capData[platform]}</p>
+                            </div>
+                            <button onClick={() => copyCaption(idx, platform)} style={{
+                              width: "100%", padding: "8px", borderRadius: "8px",
+                              border: isCopied ? "1px solid rgba(34,197,94,0.4)" : "1px solid rgba(255,255,255,0.15)",
+                              background: isCopied ? "rgba(34,197,94,0.08)" : "rgba(255,255,255,0.06)",
+                              color: isCopied ? "#22c55e" : "#fff", fontSize: "12px", fontWeight: 600, cursor: "pointer",
+                              display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", transition: "all 0.2s",
+                            }}>
+                              {isCopied
+                                ? <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>Tersalin!</>
+                                : <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>Copy Caption</>
+                              }
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <button onClick={onClose} style={{
+              width: "100%", padding: "13px", borderRadius: "50px",
+              background: "#fff", color: "#000", border: "none", fontSize: "15px", fontWeight: 700,
+              cursor: "pointer", transition: "background 0.2s",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+            }}
+              onMouseEnter={e => (e.currentTarget.style.background = "#e5e5e5")}
+              onMouseLeave={e => (e.currentTarget.style.background = "#fff")}
+            >Generate Video Baru</button>
+          </div>
+        )}
+
+        {/* ── ERROR ── */}
+        {status === "error" && (
+          <div style={{ textAlign: "center" }}>
+            <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#f87171", fontSize: "24px", marginBottom: "12px" }}>!</div>
+            <h2 style={{ fontSize: "18px", fontWeight: 700, color: "#fca5a5", marginBottom: "12px" }}>Gagal Membuat Klip</h2>
+            <div style={{ color: "#fca5a5", fontSize: "13px", textAlign: "left", marginBottom: "24px", wordBreak: "break-word" }}>
+              <span style={{ fontWeight: 600 }}>Detail Error: </span>{errorMsg}
+            </div>
+            <button onClick={onClose} style={{
+              width: "100%", padding: "13px", borderRadius: "50px",
+              background: "#fff", color: "#000", border: "none", fontSize: "15px", fontWeight: 700,
+              cursor: "pointer", transition: "background 0.2s",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+            }}
+              onMouseEnter={e => (e.currentTarget.style.background = "#e5e5e5")}
+              onMouseLeave={e => (e.currentTarget.style.background = "#fff")}
+            >Generate Video Baru</button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [username, setUsername] = useState("User");
@@ -51,6 +473,7 @@ export default function DashboardPage() {
   const [url, setUrl] = useState("");
   const [addSubtitle, setAddSubtitle] = useState(false);
   const [subtitleStyle, setSubtitleStyle] = useState<"beasty" | "youshaei" | "mozi">("mozi");
+  const [layout, setLayout] = useState<"blur" | "split">("blur");
 
   // ── Auto mode ──
   const [autoStatus, setAutoStatus] = useState<"idle" | "analyzing" | "ready" | "error">("idle");
@@ -59,12 +482,28 @@ export default function DashboardPage() {
   const [selectedHighlights, setSelectedHighlights] = useState<Set<number>>(new Set());
   const [transcriptSource, setTranscriptSource] = useState<"youtube" | "whisper">("youtube");
 
+  // ── UI state ──
+  const [showAvatarMenu, setShowAvatarMenu] = useState(false);
+  const [showProModal, setShowProModal] = useState(false);
+
   // ── Manual mode ──
   const [clips, setClips] = useState<ClipEntry[]>([{ id: 1, startTime: "00:00:00", duration: 30, selected: true }]);
   const [videoDuration, setVideoDuration] = useState<number | null>(null);
   const [videoDurationLoading, setVideoDurationLoading] = useState(false);
   const [clipLimitWarning, setClipLimitWarning] = useState("");
   const [videoLimitWarning, setVideoLimitWarning] = useState("");
+
+  // ── Generate Modal ──
+  const [showGenerateModal, setShowGenerateModal] = useState<ModalBatch | null>(null);
+
+  // ── Mobile detection ──
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("autoclip_user");
@@ -110,10 +549,11 @@ export default function DashboardPage() {
       clips: selected.map((h) => ({ start: h.start_time, startTime: h.start_label, duration: h.duration })),
       addSubtitle,
       subtitleStyle,
+      layout,
       autoMode: true,
     };
     sessionStorage.setItem("autoclip_batch", JSON.stringify(batch));
-    router.push("/dashboard/generate");
+    setShowGenerateModal(batch);
     setUrl(""); setAutoStatus("idle"); setHighlights([]); setAddSubtitle(false);
   }
 
@@ -201,14 +641,18 @@ export default function DashboardPage() {
       clips: selectedClips.map(clip => ({ start: timeToSeconds(clip.startTime), startTime: clip.startTime, duration: clip.duration })),
       addSubtitle,
       subtitleStyle,
+      layout,
     };
     sessionStorage.setItem("autoclip_batch", JSON.stringify(batch));
-    router.push("/dashboard/generate");
+    setShowGenerateModal(batch);
     setUrl(""); setAddSubtitle(false);
     setClips([{ id: 1, startTime: "00:00:00", duration: 30, selected: true }]);
   }
 
-  function handleLogout() { sessionStorage.removeItem("autoclip_user"); router.push("/"); }
+  async function handleLogout() {
+    sessionStorage.removeItem("autoclip_user");
+    router.push("/");
+  }
 
   const videoId = getYouTubeId(url);
 
@@ -217,52 +661,126 @@ export default function DashboardPage() {
       {/* ── Topbar ── */}
       <header style={{
         position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
-        height: "64px", display: "grid", gridTemplateColumns: "1fr auto 1fr",
-        alignItems: "center", padding: "0 40px",
-        background: "rgba(0,0,0,0.85)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
+        height: "64px", display: "flex", alignItems: "center",
+        padding: isMobile ? "0 16px" : "0 24px", gap: "0",
+        background: "rgba(0,0,0,0.92)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
         borderBottom: "1px solid rgba(255,255,255,0.06)",
       }}>
         {/* Logo */}
-        <div style={{ display: "flex", alignItems: "center", cursor: "pointer" }} onClick={() => router.push("/")}>
-          <Image src="/logo.png" alt="Productive Clip" width={150} height={48} priority style={{ objectFit: "contain" }} />
+        <div style={{ display: "flex", alignItems: "center", cursor: "pointer", marginRight: isMobile ? "16px" : "32px", flexShrink: 0 }} onClick={() => router.push("/")}>
+          <Image src="/logo.png" alt="Productive Clip" width={isMobile ? 110 : 130} height={isMobile ? 34 : 40} priority style={{ objectFit: "contain" }} />
         </div>
 
-        {/* Nav center */}
-        <nav style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-          {/* Auto / Manual mode tabs */}
+        {/* Nav links */}
+        <nav style={{ display: "flex", alignItems: "center", gap: "2px", flex: 1 }}>
           {(["auto", "manual"] as const).map((m) => (
             <button key={m} onClick={() => setMode(m)} style={{
-              padding: "7px 16px", borderRadius: "8px", fontSize: "14px", fontWeight: 600,
-              cursor: "pointer", transition: "all 0.2s",
-              background: mode === m ? "rgba(255,255,255,0.06)" : "transparent",
-              color: mode === m ? "#fff" : "rgba(255,255,255,0.7)",
-              border: "none",
+              padding: "6px 14px", borderRadius: "6px", fontSize: "14px", fontWeight: mode === m ? 600 : 400,
+              cursor: "pointer", transition: "all 0.15s", border: "none",
+              background: "transparent",
+              color: mode === m ? "#fff" : "rgba(255,255,255,0.55)",
+              position: "relative",
             }}
               onMouseEnter={e => (e.currentTarget.style.color = "#fff")}
-              onMouseLeave={e => { if (mode !== m) e.currentTarget.style.color = "rgba(255,255,255,0.7)"; }}
-            >{m === "auto" ? "Auto" : "Manual"}</button>
+              onMouseLeave={e => { if (mode !== m) e.currentTarget.style.color = "rgba(255,255,255,0.55)"; }}
+            >
+              {m === "auto" ? "Auto" : "Manual"}
+              {/* Active underline */}
+              {mode === m && (
+                <span style={{
+                  position: "absolute", bottom: "-1px", left: "14px", right: "14px",
+                  height: "2px", background: "#fff", borderRadius: "1px",
+                }} />
+              )}
+            </button>
           ))}
         </nav>
 
-        {/* Right: user + logout */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "16px" }}>
-          <div style={{
-            width: "28px", height: "28px", borderRadius: "50%", background: "rgba(255,255,255,0.1)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: "12px", fontWeight: 700, color: "#fff", border: "1px solid rgba(255,255,255,0.15)",
-          }}>{username.charAt(0).toUpperCase()}</div>
-          <button onClick={handleLogout} style={{
-            background: "transparent", border: "none", color: "#fff",
-            fontSize: "14px", fontWeight: 600, cursor: "pointer", transition: "color 0.2s",
-          }}
-            onMouseEnter={e => (e.currentTarget.style.color = "rgba(255,255,255,0.7)")}
-            onMouseLeave={e => (e.currentTarget.style.color = "#fff")}
-          >Keluar</button>
+        {/* Right: avatar + dropdown */}
+        <div style={{ position: "relative", flexShrink: 0 }}>
+          {/* Avatar */}
+          <div
+            onClick={() => setShowAvatarMenu(v => !v)}
+            style={{
+              width: "32px", height: "32px", borderRadius: "50%",
+              background: showAvatarMenu ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.15)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: "13px", fontWeight: 700, color: "#fff",
+              border: "1px solid rgba(255,255,255,0.2)", cursor: "pointer",
+              transition: "background 0.15s", userSelect: "none",
+            }}
+            title={username}
+          >
+            {username.charAt(0).toUpperCase()}
+          </div>
+
+          {/* Dropdown menu */}
+          {showAvatarMenu && (
+            <>
+              {/* Backdrop */}
+              <div
+                onClick={() => setShowAvatarMenu(false)}
+                style={{ position: "fixed", inset: 0, zIndex: 199 }}
+              />
+              {/* Menu box */}
+              <div style={{
+                position: "absolute", top: "calc(100% + 10px)", right: 0,
+                zIndex: 200, minWidth: "180px",
+                background: "#111", border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: "12px", padding: "6px",
+                boxShadow: "0 16px 40px rgba(0,0,0,0.6)",
+              }}>
+                {/* User info */}
+                <div style={{ padding: "10px 12px 8px", borderBottom: "1px solid rgba(255,255,255,0.08)", marginBottom: "4px" }}>
+                  <p style={{ margin: 0, fontSize: "13px", fontWeight: 600, color: "#fff" }}>{username}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>Free Plan</p>
+                </div>
+
+                {/* Go to Pro */}
+                <button
+                  onClick={() => { setShowAvatarMenu(false); setShowProModal(true); }}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: "10px",
+                    padding: "9px 12px", borderRadius: "8px", border: "none",
+                    background: "transparent", cursor: "pointer", textAlign: "left",
+                    transition: "background 0.15s",
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "rgba(251,191,36,0.12)")}
+                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2.5">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                  </svg>
+                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#fbbf24" }}>Upgrade to Pro</span>
+                </button>
+
+                {/* Logout */}
+                <button
+                  onClick={() => { setShowAvatarMenu(false); handleLogout(); }}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: "10px",
+                    padding: "9px 12px", borderRadius: "8px", border: "none",
+                    background: "transparent", cursor: "pointer", textAlign: "left",
+                    transition: "background 0.15s",
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")}
+                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="2">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                  </svg>
+                  <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.7)" }}>Logout</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </header>
 
       {/* ── Body ── */}
-      <div style={{ flex: 1, paddingTop: "80px", paddingBottom: "48px", paddingLeft: "32px", paddingRight: "32px", position: "relative" }}>
+      <div style={{ flex: 1, paddingTop: "72px", paddingBottom: "48px", paddingLeft: isMobile ? "16px" : "32px", paddingRight: isMobile ? "16px" : "32px", position: "relative" }}>
         <div aria-hidden style={{
           position: "fixed", top: "-200px", left: "50%", transform: "translateX(-50%)",
           width: "700px", height: "700px", borderRadius: "50%",
@@ -273,7 +791,7 @@ export default function DashboardPage() {
         <div style={{ maxWidth: "1200px", margin: "0 auto", position: "relative", zIndex: 1 }}>
           {/* Header */}
           <div className="animate-fade-up" style={{ marginBottom: "28px", textAlign: "center" }}>
-            <h1 style={{ fontSize: "32px", fontWeight: 700, color: "#fff", margin: 0, letterSpacing: "-0.4px" }}>Dashboard</h1>
+            <h1 style={{ fontSize: isMobile ? "24px" : "32px", fontWeight: 700, color: "#fff", margin: 0, letterSpacing: "-0.4px" }}>Dashboard</h1>
             <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "14px", marginTop: "5px" }}>
               Halo, <span style={{ color: "#fff", fontWeight: 600 }}>{username}</span>! Selamat datang di ProductiveClip.
             </p>
@@ -281,7 +799,7 @@ export default function DashboardPage() {
 
           {/* ════════════ AUTO MODE ════════════ */}
           {mode === "auto" && (
-            <div className="animate-fade-up" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", alignItems: "start" }}>
+            <div className="animate-fade-up" style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? "16px" : "24px", alignItems: "start" }}>
 
               {/* Left: URL + Analyze */}
               <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "16px", padding: "24px" }}>
@@ -530,7 +1048,7 @@ export default function DashboardPage() {
 
           {/* ════════════ MANUAL MODE ════════════ */}
           {mode === "manual" && (
-            <div className="animate-fade-up" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", alignItems: "start" }}>
+            <div className="animate-fade-up" style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? "16px" : "24px", alignItems: "start" }}>
 
               {/* Left: URL + Preview */}
               <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "16px", padding: "24px" }}>
@@ -623,7 +1141,7 @@ export default function DashboardPage() {
                         border: clip.selected ? (isDurationInvalid ? "1px solid rgba(239,68,68,0.5)" : "1px solid rgba(255,255,255,0.08)") : "1px solid rgba(255,255,255,0.04)",
                         opacity: clip.selected ? 1 : 0.65, transition: "all 0.2s",
                       }}>
-                        <div style={{ display: "grid", gridTemplateColumns: clips.length > 1 ? "auto auto 1fr 1fr auto" : "auto auto 1fr 1fr", gap: "10px", alignItems: "center" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: clips.length > 1 ? "auto auto 1fr 1fr auto" : "auto auto 1fr 1fr", gap: "10px", alignItems: "center", overflowX: isMobile ? "auto" : "visible" }}>
                           <div style={{ display: "flex", alignItems: "center", cursor: "pointer" }} onClick={() => updateClip(clip.id, "selected", !clip.selected)}>
                             <div style={{
                               width: "18px", height: "18px", borderRadius: "4px",
@@ -787,6 +1305,205 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+    {/* ── Pro Pricing Modal ── */}
+    {showProModal && (
+      <>
+        {/* Backdrop */}
+        <div
+          onClick={() => setShowProModal(false)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 999,
+            background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
+          }}
+        />
+
+        {/* Modal */}
+        <div style={{
+          position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+          zIndex: 1000, width: "min(860px, 95vw)", maxHeight: "90vh", overflowY: "auto",
+          background: "#0d0d0d", border: "1px solid rgba(255,255,255,0.1)",
+          borderRadius: "20px", padding: isMobile ? "24px 16px" : "40px 36px",
+        }}>
+          {/* Close button */}
+          <button
+            onClick={() => setShowProModal(false)}
+            style={{
+              position: "absolute", top: "16px", right: "16px",
+              width: "32px", height: "32px", borderRadius: "50%",
+              background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)",
+              color: "rgba(255,255,255,0.7)", cursor: "pointer", fontSize: "16px",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "background 0.15s",
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.15)")}
+            onMouseLeave={e => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
+          >
+            ×
+          </button>
+
+          {/* Header */}
+          <div style={{ textAlign: "center", marginBottom: "36px" }}>
+            <div style={{
+              display: "inline-flex", alignItems: "center", gap: "6px",
+              padding: "5px 14px", borderRadius: "20px",
+              background: "#f59e0b", marginBottom: "16px",
+            }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="3">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+              <span style={{ fontSize: "11px", fontWeight: 800, color: "#000", letterSpacing: "0.8px", textTransform: "uppercase" }}>Premium Access</span>
+            </div>
+            <h2 style={{ fontSize: "36px", fontWeight: 800, color: "#fff", margin: "0 0 10px", letterSpacing: "-0.5px" }}>Upgrade to Pro</h2>
+            <p style={{ fontSize: "14px", color: "rgba(255,255,255,0.5)", margin: 0 }}>
+              Buka potensi penuh clipper Anda dengan fitur AI tercanggih di industri.
+            </p>
+          </div>
+
+          {/* Pricing cards */}
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: "16px" }}>
+
+            {/* Free */}
+            <div style={{
+              borderRadius: "16px", padding: "24px",
+              background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)",
+              display: "flex", flexDirection: "column",
+            }}>
+              <p style={{ margin: "0 0 4px", fontSize: "15px", fontWeight: 700, color: "#fff" }}>Free</p>
+              <div style={{ marginBottom: "12px" }}>
+                <span style={{ fontSize: "32px", fontWeight: 800, color: "#fff" }}>Rp0</span>
+                <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)", marginLeft: "4px" }}>/bulan</span>
+              </div>
+              <p style={{ margin: "0 0 20px", fontSize: "12px", color: "rgba(255,255,255,0.5)", lineHeight: 1.5 }}>
+                Untuk pemula yang baru memulai perjalanan clipping.
+              </p>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "10px", marginBottom: "24px" }}>
+                {[
+                  { text: "AI Clipping Dasar", included: true },
+                  { text: "Export 720p", included: true },
+                  { text: "Cloud Storage (2GB)", included: false },
+                ].map((f, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    {f.included
+                      ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
+                      : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                    }
+                    <span style={{ fontSize: "13px", color: f.included ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.25)", textDecoration: f.included ? "none" : "line-through" }}>{f.text}</span>
+                  </div>
+                ))}
+              </div>
+              <button style={{
+                width: "100%", padding: "11px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.15)",
+                background: "transparent", color: "rgba(255,255,255,0.6)", fontSize: "13px", fontWeight: 600,
+                cursor: "pointer", transition: "all 0.2s",
+              }}
+                onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.color = "#fff"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}
+              >
+                Pilih Paket
+              </button>
+            </div>
+
+            {/* Clipper Pro (highlighted) */}
+            <div style={{
+              borderRadius: "16px", padding: "24px",
+              background: "rgba(251,191,36,0.06)", border: "2px solid #f59e0b",
+              display: "flex", flexDirection: "column", position: "relative",
+            }}>
+              {/* Best badge */}
+              <div style={{
+                position: "absolute", top: "-13px", left: "50%", transform: "translateX(-50%)",
+                padding: "4px 14px", borderRadius: "20px", background: "#f59e0b",
+                fontSize: "10px", fontWeight: 800, color: "#000", letterSpacing: "0.5px",
+                textTransform: "uppercase", whiteSpace: "nowrap",
+              }}>
+                Best for Productive Clip
+              </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+                <p style={{ margin: 0, fontSize: "15px", fontWeight: 700, color: "#fff" }}>Clipper Pro</p>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b" stroke="none"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
+              </div>
+              <div style={{ marginBottom: "12px" }}>
+                <span style={{ fontSize: "32px", fontWeight: 800, color: "#fff" }}>Rp149k</span>
+                <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)", marginLeft: "4px" }}>/3 bulan</span>
+              </div>
+              <p style={{ margin: "0 0 20px", fontSize: "12px", color: "rgba(255,255,255,0.5)", lineHeight: 1.5 }}>
+                Maksimalkan konten Anda dengan fitur pro tak terbatas.
+              </p>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "10px", marginBottom: "24px" }}>
+                {[
+                  "AI Auto-Clipping Pro",
+                  "Export 4K Ultra HD",
+                  "Cloud Storage (100GB)",
+                  "Priority Rendering",
+                  "Multi-platform distribution",
+                ].map((f, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
+                    <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.85)" }}>{f}</span>
+                  </div>
+                ))}
+              </div>
+              <button style={{
+                width: "100%", padding: "11px", borderRadius: "10px", border: "none",
+                background: "#f59e0b", color: "#000", fontSize: "13px", fontWeight: 800,
+                cursor: "pointer", transition: "background 0.2s",
+              }}
+                onMouseEnter={e => (e.currentTarget.style.background = "#fbbf24")}
+                onMouseLeave={e => (e.currentTarget.style.background = "#f59e0b")}
+              >
+                Pilih Paket
+              </button>
+            </div>
+
+            {/* Agency */}
+            <div style={{
+              borderRadius: "16px", padding: "24px",
+              background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)",
+              display: "flex", flexDirection: "column",
+            }}>
+              <p style={{ margin: "0 0 4px", fontSize: "15px", fontWeight: 700, color: "#fff" }}>Agency</p>
+              <div style={{ marginBottom: "12px" }}>
+                <span style={{ fontSize: "32px", fontWeight: 800, color: "#fff" }}>Rp499k</span>
+                <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)", marginLeft: "4px" }}>/3 bulan</span>
+              </div>
+              <p style={{ margin: "0 0 20px", fontSize: "12px", color: "rgba(255,255,255,0.5)", lineHeight: 1.5 }}>
+                Solusi skala besar untuk tim dan agensi konten.
+              </p>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "10px", marginBottom: "24px" }}>
+                {[
+                  "Semua Fitur Pro",
+                  "Team Collaboration (10 Device)",
+                  "Unlimited Cloud Storage",
+                  "Dedicated Account Manager",
+                ].map((f, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
+                    <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.85)" }}>{f}</span>
+                  </div>
+                ))}
+              </div>
+              <button style={{
+                width: "100%", padding: "11px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.15)",
+                background: "transparent", color: "rgba(255,255,255,0.6)", fontSize: "13px", fontWeight: 600,
+                cursor: "pointer", transition: "all 0.2s",
+              }}
+                onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.color = "#fff"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}
+              >
+                Pilih Paket
+              </button>
+            </div>
+
+          </div>
+        </div>
+      </>
+    )}
+
+    {/* ── Generate Modal Popup ── */}
+    {showGenerateModal && (
+      <GenerateModal batch={showGenerateModal} onClose={() => setShowGenerateModal(null)} isMobile={isMobile} />
+    )}
     </div>
   );
 }

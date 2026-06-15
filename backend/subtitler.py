@@ -20,7 +20,7 @@ BEASTY_OUTLINE   = "&H00000000"   # black
 BEASTY_SHADOW_C  = "&H88000000"   # dark shadow
 BEASTY_OUTLINE_W = 3
 BEASTY_SHADOW_D  = 3
-BEASTY_MARGIN_V  = 400            # center-ish (portrait 1920px)
+BEASTY_MARGIN_V  = 440            # inside bottom blur zone (portrait 1920)
 BEASTY_MAX_WORDS = 2
 
 # ── Style: Youshaei ───────────────────────────────────────────────────────────
@@ -32,7 +32,7 @@ YOUSHAEI_INACTIVE   = "&H99FFFFFF"   # white ~60% opacity
 YOUSHAEI_OUTLINE    = "&H00000000"
 YOUSHAEI_OUTLINE_W  = 2
 YOUSHAEI_SHADOW     = 1
-YOUSHAEI_MARGIN_V   = 300
+YOUSHAEI_MARGIN_V   = 440   # inside bottom blur zone
 YOUSHAEI_MAX_WORDS  = 5
 
 # ── Style: Mozi ───────────────────────────────────────────────────────────────
@@ -44,7 +44,7 @@ MOZI_COLOR_B   = "&H0000FF00"    # green
 MOZI_OUTLINE   = "&H00000000"
 MOZI_OUTLINE_W = 3
 MOZI_SHADOW    = 2
-MOZI_MARGIN_V  = 300
+MOZI_MARGIN_V  = 440   # inside bottom blur zone
 MOZI_MAX_WORDS = 3
 
 
@@ -139,7 +139,7 @@ def _generate_beasty(segments, ass_path: str) -> None:
         f"Style: Beasty,{BEASTY_FONT},{BEASTY_SIZE},"
         f"{BEASTY_COLOR},&H000000FF,{BEASTY_OUTLINE},{BEASTY_SHADOW_C},"
         f"1,1,0,0,100,100,0,0,1,{BEASTY_OUTLINE_W},{BEASTY_SHADOW_D},"
-        f"5,20,20,{BEASTY_MARGIN_V},1"
+        f"2,20,20,{BEASTY_MARGIN_V},1"
     )
     header = _ass_header(style)
     lines = []

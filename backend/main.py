@@ -39,7 +39,8 @@ class ClipRequest(BaseModel):
     start_time: int = 0
     duration: int = 30
     add_subtitle: bool = False
-    subtitle_style: str = "mozi"  # "beasty" | "youshaei" | "mozi"
+    subtitle_style: str = "mozi"
+    layout: str = "blur"  # "blur" | "split"
 
 
 class ClipResponse(BaseModel):
@@ -105,9 +106,11 @@ def generate_clip(req: ClipRequest):
         raise HTTPException(status_code=500, detail="Failed to download video")
 
     # 2. Extract the clip
+    #    The downloader already trimmed the video to the requested section,
+    #    so we start from 0 and use the full downloaded file duration.
     output_filename = f"clip_{job_id}.mp4"
     output_path = os.path.join(OUTPUT_DIR, output_filename)
-    success = extract_clip(video_path, output_path, req.start_time, req.duration)
+    success = extract_clip(video_path, output_path, start_time=0, duration=req.duration, layout=req.layout)
 
     if not success or not os.path.exists(output_path):
         raise HTTPException(status_code=500, detail="Failed to extract clip")

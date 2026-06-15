@@ -28,7 +28,6 @@ export default function LoginPage() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#000", display: "flex", flexDirection: "column", position: "relative", overflow: "hidden" }}>
-      {/* Background orb */}
       <div aria-hidden style={{
         position: "fixed", top: "-200px", left: "50%", transform: "translateX(-50%)",
         width: "700px", height: "700px", borderRadius: "50%",
@@ -36,7 +35,6 @@ export default function LoginPage() {
         pointerEvents: "none", zIndex: 0,
       }} />
 
-      {/* Back to Home */}
       <button onClick={() => router.push("/")} style={{
         position: "fixed", top: "24px", left: "24px", zIndex: 10,
         display: "flex", alignItems: "center", gap: "6px",
@@ -44,11 +42,10 @@ export default function LoginPage() {
         background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
         color: "rgba(255,255,255,0.6)", fontSize: "13px", cursor: "pointer", transition: "color 0.2s",
       }}
-        onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
-        onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.6)")}
+        onMouseEnter={e => (e.currentTarget.style.color = "#fff")}
+        onMouseLeave={e => (e.currentTarget.style.color = "rgba(255,255,255,0.6)")}
       >← Kembali</button>
 
-      {/* Main Content */}
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", zIndex: 1 }}>
         <div className="animate-fade-up" style={{
           width: "100%", maxWidth: "420px", zIndex: 1,
@@ -64,7 +61,7 @@ export default function LoginPage() {
             <div>
               <label style={{ display: "block", fontSize: "13px", fontWeight: 500, color: "rgba(255,255,255,0.7)", marginBottom: "7px" }}>Username</label>
               <input id="username" type="text" placeholder="Masukkan username"
-                value={username} onChange={(e) => setUsername(e.target.value)}
+                value={username} onChange={e => setUsername(e.target.value)}
                 disabled={loading} autoComplete="username"
                 style={{
                   width: "100%", padding: "11px 14px", borderRadius: "11px",
@@ -72,8 +69,8 @@ export default function LoginPage() {
                   color: "#fff", fontSize: "14px", outline: "none", boxSizing: "border-box",
                   transition: "border-color 0.2s", opacity: loading ? 0.6 : 1,
                 }}
-                onFocus={(e) => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.4)")}
-                onBlur={(e) => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)")}
+                onFocus={e => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.4)")}
+                onBlur={e => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)")}
               />
             </div>
 
@@ -81,7 +78,7 @@ export default function LoginPage() {
               <label style={{ display: "block", fontSize: "13px", fontWeight: 500, color: "rgba(255,255,255,0.7)", marginBottom: "7px" }}>Password</label>
               <div style={{ position: "relative" }}>
                 <input id="password" type={showPass ? "text" : "password"} placeholder="Masukkan password"
-                  value={password} onChange={(e) => setPassword(e.target.value)}
+                  value={password} onChange={e => setPassword(e.target.value)}
                   disabled={loading} autoComplete="current-password"
                   style={{
                     width: "100%", padding: "11px 44px 11px 14px", borderRadius: "11px",
@@ -89,8 +86,8 @@ export default function LoginPage() {
                     color: "#fff", fontSize: "14px", outline: "none", boxSizing: "border-box",
                     transition: "border-color 0.2s", opacity: loading ? 0.6 : 1,
                   }}
-                  onFocus={(e) => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.4)")}
-                  onBlur={(e) => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)")}
+                  onFocus={e => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.4)")}
+                  onBlur={e => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)")}
                 />
                 <button type="button" onClick={() => setShowPass(!showPass)} style={{
                   position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)",
@@ -112,8 +109,8 @@ export default function LoginPage() {
               opacity: loading ? 0.7 : 1, transition: "opacity 0.2s, background 0.2s",
               display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", marginTop: "4px",
             }}
-              onMouseEnter={(e) => { if (!loading) e.currentTarget.style.background = "#e5e5e5"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; }}
+              onMouseEnter={e => { if (!loading) e.currentTarget.style.background = "#e5e5e5"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "#fff"; }}
             >
               {loading ? (
                 <>

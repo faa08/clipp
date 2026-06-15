@@ -135,3 +135,97 @@ body {
   background-size: 800px 100%;
   animation: shimmer 1.6s infinite;
 }
+
+/* ── Water Fill Loading Indicator ── */
+@keyframes water-wave {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(-8px);
+  }
+}
+
+@keyframes water-wave-alt {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(6px);
+  }
+}
+
+.water-box {
+  position: relative;
+  width: 152px;
+  height: 152px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.water-fill {
+  position: absolute;
+  bottom: 0;
+  left: -8px;
+  right: -8px;
+  background: linear-gradient(to top, rgba(96, 165, 250, 0.45), rgba(96, 165, 250, 0.15));
+  border-radius: 0 0 22px 22px;
+  transition: height 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.water-wave-1 {
+  position: absolute;
+  top: -5px;
+  left: -24px;
+  right: -24px;
+  height: 14px;
+  background: radial-gradient(ellipse at 50% 100%, rgba(96, 165, 250, 0.5) 0%, transparent 70%);
+  border-radius: 50%;
+  animation: water-wave 2.5s ease-in-out infinite;
+}
+
+.water-wave-2 {
+  position: absolute;
+  top: -3px;
+  left: -18px;
+  right: -18px;
+  height: 10px;
+  background: radial-gradient(ellipse at 50% 100%, rgba(147, 197, 253, 0.35) 0%, transparent 70%);
+  border-radius: 50%;
+  animation: water-wave-alt 3s ease-in-out infinite;
+}
+
+.water-pct {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  font-family: monospace;
+  font-size: 34px;
+  font-weight: 900;
+  letter-spacing: -1px;
+  transition: color 0.4s ease;
+}
+
+.water-bar {
+  width: 72px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 5px;
+}
+
+.water-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 1s ease;
+}

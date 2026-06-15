@@ -80,89 +80,90 @@ def _fetch_yt_transcript(video_id: str) -> list[dict] | None:
         return None
 
 
-# ── Whisper fallback ──────────────────────────────────────────────────────────
+# ── Groq Whisper API fallback ─────────────────────────────────────────────────
 
 def _whisper_transcript(url: str) -> list[dict] | None:
     """
-    Download audio-only from YouTube (max 10 minutes to keep it fast),
-    transcribe with Whisper, and return entries in the same format as
-    YouTube transcript API [{text, start, duration}, ...].
+    Download audio-only from YouTube (max 5 minutes, m4a format — small file),
+    send to Groq Whisper API for fast cloud transcription (~3-5 seconds).
+    Returns entries in [{text, start, duration}] format.
     """
-    try:
-        from faster_whisper import WhisperModel
-    except ImportError:
-        print("[highlighter] faster-whisper not installed, skipping Whisper fallback")
-        return None
-
-    ytdlp = _get_ytdlp_cmd()
-    ffmpeg_bin = _find_ffmpeg()
-    tmpdir = tempfile.mkdtemp(prefix="highlight_")
+    ytdlp    = _get_ytdlp_cmd()
+    ffmpeg_b = _find_ffmpeg()
+    tmpdir   = tempfile.mkdtemp(prefix="highlight_")
 
     try:
-        audio_path = os.path.join(tmpdir, "audio.%(ext)s")
+        audio_out = os.path.join(tmpdir, "audio.%(ext)s")
 
+        # Download max 5 minutes as m4a (small file, fast upload)
         cmd = [
             ytdlp,
             "--extractor-args", "youtube:player_client=android,web",
             "--no-playlist",
-            # Download max 10 minutes so it's fast enough for highlight detection
-            "--download-sections", "*00:00:00-00:10:00",
+            "--download-sections", "*00:00:00-00:05:00",
             "-f", "bestaudio[ext=m4a]/bestaudio/best",
-            "--extract-audio",
-            "--audio-format", "wav",
-            "--audio-quality", "5",          # lower quality = faster
-            "-o", audio_path,
+            "--no-post-overwrites",
+            "-o", audio_out,
             url,
         ]
-        if ffmpeg_bin:
-            cmd += ["--ffmpeg-location", ffmpeg_bin]
+        if ffmpeg_b:
+            cmd += ["--ffmpeg-location", ffmpeg_b]
 
-        print(f"[highlighter] Downloading audio for Whisper fallback...")
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-        if result.returncode != 0:
-            print(f"[highlighter] yt-dlp audio download failed: {result.stderr[-300:]}")
+        print("[highlighter] Downloading audio for Groq Whisper...")
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            print(f"[highlighter] yt-dlp audio failed: {r.stderr[-300:]}")
             return None
 
-        # Find the downloaded wav
-        wav_file = None
+        # Find downloaded file
+        audio_file = None
         for f in os.listdir(tmpdir):
-            if f.endswith(".wav"):
-                wav_file = os.path.join(tmpdir, f)
+            if not f.endswith(".part"):
+                audio_file = os.path.join(tmpdir, f)
                 break
-        if not wav_file:
-            print("[highlighter] No wav file found after download")
+
+        if not audio_file or not os.path.exists(audio_file):
+            print("[highlighter] Audio file not found after download")
             return None
 
-        print(f"[highlighter] Transcribing with Whisper...")
-        model = WhisperModel("small", device="cpu", compute_type="int8")
-        segments_gen, info = model.transcribe(
-            wav_file,
-            beam_size=3,
-            language=None,
-            vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=500),
-        )
-        segments = list(segments_gen)
-        print(f"[highlighter] Whisper detected language: {info.language}, segments: {len(segments)}")
+        file_size = os.path.getsize(audio_file)
+        print(f"[highlighter] Audio file: {os.path.basename(audio_file)} ({file_size // 1024}KB)")
 
-        if not segments:
-            return None
+        # Send to Groq Whisper API
+        print("[highlighter] Sending to Groq Whisper API...")
+        client = _get_client()
+        with open(audio_file, "rb") as af:
+            transcription = client.audio.transcriptions.create(
+                file=(os.path.basename(audio_file), af),
+                model="whisper-large-v3-turbo",  # fastest Groq Whisper model
+                response_format="verbose_json",   # includes word/segment timestamps
+                timestamp_granularities=["segment"],
+            )
 
-        # Convert to same format as YouTube transcript
-        entries = [
-            {"text": seg.text.strip(), "start": seg.start, "duration": seg.end - seg.start}
-            for seg in segments
-        ]
-        return entries
+        # Convert Groq response to our format
+        entries = []
+        if hasattr(transcription, "segments") and transcription.segments:
+            for seg in transcription.segments:
+                entries.append({
+                    "text": seg.get("text", "").strip() if isinstance(seg, dict) else seg.text.strip(),
+                    "start": seg.get("start", 0) if isinstance(seg, dict) else seg.start,
+                    "duration": (seg.get("end", 0) - seg.get("start", 0)) if isinstance(seg, dict)
+                                else (seg.end - seg.start),
+                })
+        elif hasattr(transcription, "text") and transcription.text:
+            # Fallback: no segments, use full text as single entry
+            entries.append({"text": transcription.text.strip(), "start": 0, "duration": 300})
+
+        print(f"[highlighter] Groq Whisper done: {len(entries)} segments")
+        return entries if entries else None
 
     except subprocess.TimeoutExpired:
         print("[highlighter] Audio download timed out")
         return None
     except Exception as e:
-        print(f"[highlighter] Whisper fallback error: {e}")
+        print(f"[highlighter] Groq Whisper error: {e}")
         return None
     finally:
-        # Clean up temp files
         import shutil as _sh
         try:
             _sh.rmtree(tmpdir, ignore_errors=True)
