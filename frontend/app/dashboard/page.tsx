@@ -1279,7 +1279,7 @@ export default function DashboardPage() {
                     {clipLimitWarning && <p style={{ margin: 0 }}>{clipLimitWarning}</p>}
                     {videoLimitWarning && <p style={{ margin: clipLimitWarning ? "4px 0 0" : 0 }}>{videoLimitWarning}</p>}
                     {hasClipBeyondVideo && videoDuration !== null && (
-                      <p style={{ margin: "4px 0 0" }}>Ada klip yang melebihi durasi video ({secondsToTime(videoDuration)}).</p>
+                      <p style={{ margin: "4px 0 0" }}>Ada klip yang melebihi durasi video lalalal ({secondsToTime(videoDuration)}).</p>
                     )}
                   </div>
                 )}
