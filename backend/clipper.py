@@ -37,6 +37,7 @@ def _find_ffmpeg() -> str:
 def _base_encode_args() -> list[str]:
     return [
         "-c:v", "libx264", "-crf", str(VIDEO_CRF), "-preset", VIDEO_PRESET,
+        "-threads", "1",  # limit threads to reduce RAM on free tier
         "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
     ]
 

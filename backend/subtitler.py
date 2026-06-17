@@ -333,14 +333,15 @@ def burn_subtitles(video_path: str, output_path: str, style: str = DEFAULT_STYLE
         else:
             _generate_mozi(fake_segs, ass_path)
 
-        # Burn into video
+        # Burn into video — ultrafast + single thread untuk hemat RAM di free tier
         ass_escaped = ass_path.replace("\\", "/").replace(":", "\\:")
         print(f"[subtitler] Burning {style} subtitles → {output_path}")
         result = subprocess.run(
             [ffmpeg, "-y", "-i", video_path,
              "-vf", f"ass='{ass_escaped}'",
-             "-c:v", "libx264", "-crf", "18", "-preset", "medium",
-             "-c:a", "aac", "-b:a", "192k",
+             "-c:v", "libx264", "-crf", "23", "-preset", "ultrafast",
+             "-threads", "1",  # limit threads to reduce RAM usage
+             "-c:a", "aac", "-b:a", "128k",
              "-movflags", "+faststart", output_path],
             capture_output=True, text=True, timeout=600,
         )
