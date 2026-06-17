@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 /* ── Time helpers ── */
 function timeToSeconds(t: string): number {
   const parts = t.split(":").map(Number);
@@ -363,7 +365,7 @@ function GenerateModal({ batch, onClose, isMobile }: { batch: ModalBatch; onClos
     if (!activeRef.current) throw new Error("Dibatalkan");
     setCurrentStep(2);
     setLoadingText("Mengekstrak klip video (MoviePy)...");
-    const res = await fetch("http://localhost:8000/generate-clip", {
+    const res = await fetch(`${API}/generate-clip`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: videoUrl, start_time: clip.start, duration: clip.duration, add_subtitle: addSubtitle, subtitle_style: subtitleStyle, layout: layoutVal }),
@@ -416,7 +418,7 @@ function GenerateModal({ batch, onClose, isMobile }: { batch: ModalBatch; onClos
         completed.forEach(async (clipResult, idx) => {
           if (!clipResult.transcript || !activeRef.current) return;
           try {
-            const capRes = await fetch("http://localhost:8000/generate-caption", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ transcript: clipResult.transcript }) });
+            const capRes = await fetch(`${API}/generate-caption`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ transcript: clipResult.transcript }) });
             if (!activeRef.current) return;
             if (capRes.ok) {
               const capData = await capRes.json();
@@ -776,7 +778,7 @@ export default function DashboardPage() {
     setHighlights([]);
     setAutoError("");
     try {
-      const res = await fetch(`http://localhost:8000/auto-highlight?url=${encodeURIComponent(url.trim())}`);
+      const res = await fetch(`${API}/auto-highlight?url=${encodeURIComponent(url.trim())}`);
       const data = await res.json();
       if (data.error) { setAutoError(data.error); setAutoStatus("error"); return; }
       const clips: HighlightClip[] = data.clips ?? [];
@@ -834,7 +836,7 @@ export default function DashboardPage() {
     const timer = setTimeout(async () => {
       setVideoDurationLoading(true);
       try {
-        const res = await fetch(`http://localhost:8000/video-info?url=${encodeURIComponent(url.trim())}`, { signal: controller.signal });
+        const res = await fetch(`${API}/video-info?url=${encodeURIComponent(url.trim())}`, { signal: controller.signal });
         if (!res.ok) throw new Error("Failed");
         const data = await res.json();
         setVideoDuration(typeof data.duration === "number" ? data.duration : null);

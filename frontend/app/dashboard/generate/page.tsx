@@ -4,6 +4,8 @@ import { Suspense, useState, useEffect } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 type Status = "idle" | "loading" | "success" | "error";
 
 interface ClipResult {
@@ -120,7 +122,7 @@ function GenerateContent() {
           setCurrentStep(1);
           setLoadingText("Mengunduh bagian video dari YouTube (yt-dlp)...");
           const clip = jobs[0].clip;
-          const res = await fetch("http://localhost:8000/generate-clip", {
+          const res = await fetch(`${API}/generate-clip`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ url: videoUrl, start_time: clip.start, duration: clip.duration, add_subtitle: addSubtitle, subtitle_style: subtitleStyle, layout }),
@@ -148,7 +150,7 @@ function GenerateContent() {
             })),
           };
 
-          const res = await fetch("http://localhost:8000/generate-bulk-clips", {
+          const res = await fetch(`${API}/generate-bulk-clips`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(bulkPayload),
@@ -197,7 +199,7 @@ function GenerateContent() {
         finalResults.forEach(async (clipResult, idx) => {
           if (!clipResult.transcript || !clipResult.transcript.trim() || !active) return;
           try {
-            const capRes = await fetch("http://localhost:8000/generate-caption", {
+            const capRes = await fetch(`${API}/generate-caption`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ transcript: clipResult.transcript }),
