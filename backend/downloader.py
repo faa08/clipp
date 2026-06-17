@@ -109,19 +109,21 @@ def download_video(
 
     command = [
         ytdlp,
-        # Use android client to avoid JS-runtime requirement
         "--extractor-args", "youtube:player_client=android,web",
         "--no-playlist",
-        # Only download the needed section (avoids downloading the entire video)
         "--download-sections", section,
-        # Force re-encode so the section timestamps are accurate
         "--force-keyframes-at-cuts",
-        # Prefer a single mp4 file; fall back to best available
         "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]/best",
         "--merge-output-format", "mp4",
         "-o", output_template,
         url,
     ]
+
+    # Use cookies if available (helps bypass bot detection on cloud servers)
+    cookies_path = "/etc/secrets/cookies.txt"
+    if os.path.exists(cookies_path):
+        command += ["--cookies", cookies_path]
+        print("[downloader] Using cookies for authentication")
 
     if ffmpeg_bin:
         command += ["--ffmpeg-location", ffmpeg_bin]
