@@ -211,7 +211,7 @@ def _process_single_clip(
                 os.remove(output_path)
                 os.rename(subtitled_path, output_path)
 
-        clip_url = f"http://localhost:8000/clips/{output_filename}"
+        clip_url = f"{os.environ.get('RENDER_EXTERNAL_URL', 'http://localhost:8000')}/clips/{output_filename}"
         return BulkClipResult(
             clip_url=clip_url,
             filename=output_filename,
