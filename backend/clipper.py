@@ -3,8 +3,8 @@ import shutil
 import subprocess
 
 _BASE_DIR = os.path.dirname(__file__)
-WATERMARK_PATH = os.path.normpath(os.path.join(_BASE_DIR, "..", "frontend", "public", "logoh.png"))
-OUTRO_PATH     = os.path.normpath(os.path.join(_BASE_DIR, "..", "frontend", "public", "outro vertikal (1).mp4"))
+WATERMARK_PATH = os.path.normpath(os.path.join(_BASE_DIR, "assets", "logoh.png"))
+OUTRO_PATH     = os.path.normpath(os.path.join(_BASE_DIR, "assets", "outro_vertikal.mp4"))
 
 # Watermark: large, centered in the TOP blur area
 WATERMARK_OPACITY = 0.80
