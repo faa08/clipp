@@ -17,6 +17,10 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
 # Install other dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-download Whisper model saat build (bukan saat runtime)
+# Supaya tidak perlu download ulang setiap kali server restart
+RUN python -c "from faster_whisper import WhisperModel; print('Downloading Whisper model...'); WhisperModel('small', device='cpu', compute_type='int8'); print('Whisper model ready.')"
+
 # Copy source code
 COPY . .
 
