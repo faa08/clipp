@@ -3,6 +3,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 
 def _get_ytdlp_cmd() -> str:
@@ -128,6 +129,7 @@ def download_video(
     print(f"[downloader] yt-dlp path : {ytdlp}")
     print(f"[downloader] ffmpeg path : {ffmpeg_bin}")
     print(f"[downloader] Running: {' '.join(command)}")
+    t0 = time.time()
 
     try:
         result = subprocess.run(
@@ -138,6 +140,7 @@ def download_video(
         )
         print("[downloader] stdout:", result.stdout[-2000:] if result.stdout else "")
         print("[downloader] stderr:", result.stderr[-2000:] if result.stderr else "")
+        print(f"[downloader] ✅ Download done in {time.time()-t0:.1f}s")
 
         if result.returncode != 0:
             print(f"[downloader] yt-dlp exited with code {result.returncode}")

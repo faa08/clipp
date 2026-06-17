@@ -94,33 +94,6 @@ function GenerateContent() {
       } catch { return null; }
     }
 
-    async function generateOne(videoUrl: string, clip: ClipJob, addSubtitle: boolean, subtitleStyle: string, layout: string): Promise<ClipResult> {
-      if (!active) throw new Error("Dibatalkan");
-      setCurrentStep(1);
-      setLoadingText("Mengunduh bagian video dari YouTube (yt-dlp)...");
-      await new Promise((resolve) => setTimeout(resolve, 800));
-      if (!active) throw new Error("Dibatalkan");
-      setCurrentStep(2);
-      setLoadingText("Mengekstrak klip video (MoviePy)...");
-
-      const res = await fetch("http://localhost:8000/generate-clip", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: videoUrl, start_time: clip.start, duration: clip.duration, add_subtitle: addSubtitle, subtitle_style: subtitleStyle, layout }),
-      });
-
-      if (addSubtitle && active) {
-        setCurrentStep(3);
-        setLoadingText("Transkripsi audio dengan Whisper AI...");
-      }
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: "Gagal memproses video" }));
-        throw new Error(err.detail ?? "Gagal memproses video");
-      }
-      return res.json();
-    }
-
     async function runGeneration() {
       const batch = parseBatch();
       const jobs: { videoUrl: string; clip: ClipJob }[] = batch
@@ -137,46 +110,92 @@ function GenerateContent() {
       setIsAutoMode(batch?.autoMode ?? false);
       const subtitleStyle = batch?.subtitleStyle ?? "mozi";
       const layout = batch?.layout ?? "blur";
-      const completed: ClipResult[] = [];
-      const errors: string[] = [];
 
       try {
-        for (let i = 0; i < jobs.length; i++) {
-          if (!active) return;
-          setCurrentClipIndex(i + 1);
+        const videoUrl = jobs[0].videoUrl;
+        let finalResults: ClipResult[] = [];
+
+        if (jobs.length === 1) {
+          // Single clip — use original endpoint
           setCurrentStep(1);
-          setLoadingText(jobs.length > 1 ? `Memproses klip ${i + 1} dari ${jobs.length}...` : "Mengunduh bagian video dari YouTube (yt-dlp)...");
-          try {
-            const data = await generateOne(jobs[i].videoUrl, jobs[i].clip, addSubtitle, subtitleStyle, layout);
-            if (!active) return;
-            setCurrentStep(addSubtitle ? 4 : 3);
-            setLoadingText(jobs.length > 1 ? `Klip ${i + 1} selesai!` : "Klip selesai dibuat!");
-            completed.push(data);
-            setResults([...completed]);
-          } catch (e: unknown) {
-            errors.push(`Klip ${i + 1}: ${e instanceof Error ? e.message : "Terjadi kesalahan"}`);
+          setLoadingText("Mengunduh bagian video dari YouTube (yt-dlp)...");
+          const clip = jobs[0].clip;
+          const res = await fetch("http://localhost:8000/generate-clip", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: videoUrl, start_time: clip.start, duration: clip.duration, add_subtitle: addSubtitle, subtitle_style: subtitleStyle, layout }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ detail: "Gagal memproses video" }));
+            throw new Error(err.detail ?? "Gagal memproses video");
           }
+          const data: ClipResult = await res.json();
+          if (!active) return;
+          finalResults = [data];
+        } else {
+          // Multiple clips — use bulk parallel endpoint (all at once)
+          setCurrentStep(1);
+          setLoadingText(`Memproses ${jobs.length} klip secara paralel...`);
+
+          const bulkPayload = {
+            url: videoUrl,
+            clips: jobs.map((j) => ({
+              start_time: j.clip.start,
+              duration: j.clip.duration,
+              layout,
+              add_subtitle: addSubtitle,
+              subtitle_style: subtitleStyle,
+            })),
+          };
+
+          const res = await fetch("http://localhost:8000/generate-bulk-clips", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(bulkPayload),
+          });
+
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ detail: "Gagal memproses video" }));
+            throw new Error(err.detail ?? "Gagal memproses video");
+          }
+
+          const bulkData = await res.json();
+          if (!active) return;
+
+          finalResults = bulkData.results
+            .filter((r: { error?: string }) => !r.error)
+            .map((r: { clip_url: string; filename: string; transcript?: string }) => ({
+              clip_url: r.clip_url,
+              filename: r.filename,
+              message: "Clip generated successfully",
+              transcript: r.transcript ?? "",
+            }));
+
+          const failedErrors: string[] = bulkData.results
+            .filter((r: { error?: string }) => r.error)
+            .map((r: { index: number; error: string }) => `Klip ${r.index + 1}: ${r.error}`);
+
+          if (finalResults.length === 0) { setErrorMsg(failedErrors.join("\n")); setStatus("error"); return; }
+          if (failedErrors.length > 0) setErrorMsg(`${finalResults.length} klip berhasil, ${failedErrors.length} gagal:\n${failedErrors.join("\n")}`);
+          setCurrentClipIndex(finalResults.length);
         }
 
         if (!active) return;
         sessionStorage.removeItem("autoclip_batch");
-        if (completed.length === 0) { setErrorMsg(errors.join("\n")); setStatus("error"); return; }
-        if (errors.length > 0) setErrorMsg(`${completed.length} klip berhasil, ${errors.length} gagal:\n${errors.join("\n")}`);
+        setResults(finalResults);
         setStatus("success");
 
-        // Generate caption per clip that has a transcript
-        const initialStatuses = completed.map(r =>
-          r.transcript ? "loading" as const : "idle" as const
+        // Init caption state — hanya loading jika transcript benar-benar ada isinya
+        const initialStatuses = finalResults.map(r =>
+          (r.transcript && r.transcript.trim().length > 0) ? "loading" as const : "idle" as const
         );
-        const initialCaptions = completed.map(() => ({ instagram: "", tiktok: "", youtube: "" }));
-        const initialPlatforms: Platform[] = completed.map(() => "instagram");
-        setClipCaptions(initialCaptions);
+        setClipCaptions(finalResults.map(() => ({ instagram: "", tiktok: "", youtube: "" })));
         setClipCaptionStatus(initialStatuses);
-        setActivePlatforms(initialPlatforms);
+        setActivePlatforms(finalResults.map(() => "instagram" as Platform));
 
-        // Fire caption requests in parallel for each clip with a transcript
-        completed.forEach(async (clipResult, idx) => {
-          if (!clipResult.transcript || !active) return;
+        // Fire caption requests in parallel for each clip with a real transcript
+        finalResults.forEach(async (clipResult, idx) => {
+          if (!clipResult.transcript || !clipResult.transcript.trim() || !active) return;
           try {
             const capRes = await fetch("http://localhost:8000/generate-caption", {
               method: "POST",
@@ -200,6 +219,7 @@ function GenerateContent() {
             setClipCaptionStatus(prev => { const next = [...prev]; next[idx] = "error"; return next; });
           }
         });
+
       } catch (e: unknown) {
         if (!active) return;
         setErrorMsg(e instanceof Error ? e.message : "Terjadi kesalahan");
@@ -419,7 +439,10 @@ function GenerateContent() {
               const capStatus = clipCaptionStatus[idx] ?? "idle";
               const capData   = clipCaptions[idx] ?? { instagram: "", tiktok: "", youtube: "" };
               const platform  = activePlatforms[idx] ?? "instagram";
-              const hasCap    = capStatus !== "idle";
+              // Only show caption panel if there's actual content or it's loading/error
+              const hasTranscript = !!(clipResult.transcript);
+              const hasCap    = hasTranscript && capStatus !== "idle";
+              const hasContent = capStatus === "done" && (capData.instagram || capData.tiktok || capData.youtube);
               const copyKey   = `${idx}-${platform}`;
               const isCopied  = !!copiedKeys[copyKey];
 
@@ -485,7 +508,7 @@ function GenerateContent() {
                         <p style={{ fontSize: "12px", color: "#f87171", margin: "0 0 12px" }}>Gagal generate caption.</p>
                       )}
 
-                      {capStatus === "done" && (
+                      {capStatus === "done" && hasContent && (
                         <>
                           {/* Platform tabs */}
                           <div style={{ display: "flex", gap: "4px", marginBottom: "10px", flexWrap: "wrap" }}>
@@ -523,6 +546,12 @@ function GenerateContent() {
                             }
                           </button>
                         </>
+                      )}
+
+                      {capStatus === "done" && !hasContent && (
+                        <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)", margin: 0, fontStyle: "italic" }}>
+                          Caption tidak tersedia untuk klip ini.
+                        </p>
                       )}
                     </div>
                   )}

@@ -6,6 +6,28 @@ from faster_whisper import WhisperModel
 
 WHISPER_MODEL_SIZE = "small"
 _model: WhisperModel | None = None
+_device: str = "cpu"
+_compute_type: str = "int8"
+
+# Detect GPU
+def _detect_device():
+    global _device, _compute_type
+    try:
+        # Try CUDA first
+        import torch
+        if torch.cuda.is_available():
+            _device = "cuda"
+            _compute_type = "float16"  # Much faster on GPU
+            print("[subtitler] GPU (CUDA) detected")
+            return
+    except:
+        pass
+    
+    print("[subtitler] Using CPU (Whisper will be slower)")
+    _device = "cpu"
+    _compute_type = "int8"
+
+_detect_device()
 
 # ── Available subtitle styles ─────────────────────────────────────────────────
 SUBTITLE_STYLES = ["beasty", "youshaei", "mozi"]
@@ -51,8 +73,8 @@ MOZI_MAX_WORDS = 3
 def _get_model() -> WhisperModel:
     global _model
     if _model is None:
-        print(f"[subtitler] Loading Whisper model '{WHISPER_MODEL_SIZE}'...")
-        _model = WhisperModel(WHISPER_MODEL_SIZE, device="cpu", compute_type="int8")
+        print(f"[subtitler] Loading Whisper model '{WHISPER_MODEL_SIZE}' on {_device}...")
+        _model = WhisperModel(WHISPER_MODEL_SIZE, device=_device, compute_type=_compute_type)
         print("[subtitler] Whisper model loaded.")
     return _model
 
