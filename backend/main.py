@@ -18,9 +18,12 @@ from highlighter import get_highlights
 
 app = FastAPI(title="Auto Clip API")
 
+origins = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+print(f"[CORS] Allowed origins: {origins}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(","),
+    allow_origins=origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
